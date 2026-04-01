@@ -1,8 +1,3 @@
-Ecco il file app.py completo e corretto, integrando la gestione dinamica delle postazioni, la funzione copia, e i fix per gli errori di dati (PyArrow/NaN) che abbiamo visto finora.
-
-Copia questo codice integralmente nel tuo file:
-
-Python
 import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
