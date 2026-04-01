@@ -104,28 +104,48 @@ if menu == "📊 Dashboard Oggi":
 elif menu == "📅 Area Disponibilità Staff":
     st.header("Inserimento Disponibilità Multipla")
     
-    # Fix per unione Nome + Cognome (evita errori NumPy/PyArrow)
     if not data["addetti"].empty:
+        # Pulizia nomi per evitare errori PyArrow
         df_temp = data["addetti"].copy()
         df_temp["Nome"] = df_temp["Nome"].astype(str).replace('nan', '')
         df_temp["Cognome"] = df_temp["Cognome"].astype(str).replace('nan', '')
         nomi = (df_temp["Nome"] + " " + df_temp["Cognome"]).tolist()
         
         scelto = st.selectbox("Chi sei?", nomi)
-        date_multiple = st.date_input("Seleziona i giorni:", value=[])
+        
+        # Selezione intervallo (Ritorna una tupla: (inizio, fine) o (inizio,))
+        date_range = st.date_input("Seleziona l'intervallo (clicca la data di inizio e quella di fine):", value=[])
+        
         stato = st.radio("Tua disponibilità:", ["Disponibile", "NON Disponibile (Riposo/Ferie)"])
         
-        if st.button("Salva Date"):
-            if date_multiple:
+        if st.button("Salva Date Intervallo"):
+            # Controllo se l'utente ha selezionato ENTRAMBE le date (inizio e fine)
+            if isinstance(date_range, tuple) and len(date_range) == 2:
+                start_date, end_date = date_range
+                
+                # Generiamo la lista di tutte le date comprese tra inizio e fine
+                lista_date = []
+                current_date = start_date
+                while current_date <= end_date:
+                    lista_date.append(str(current_date))
+                    current_date += timedelta(days=1)
+                
+                # Prepariamo i nuovi dati
                 n, c = scelto.split(" ", 1)
-                nuovi = pd.DataFrame([{"Nome": n, "Cognome": c, "Data": str(d), "Stato": stato} for d in date_multiple])
-                date_str = [str(d) for d in date_multiple]
-                old_disp = data["disp"][~((data["disp"]["Cognome"] == c) & (data["disp"]["Data"].isin(date_str)))]
+                nuovi = pd.DataFrame([{"Nome": n, "Cognome": c, "Data": d, "Stato": stato} for d in lista_date])
+                
+                # Rimuoviamo i vecchi record per quelle date per evitare duplicati
+                old_disp = data["disp"][~((data["disp"]["Cognome"] == c) & (data["disp"]["Data"].isin(lista_date)))]
+                
+                # Unione e caricamento
                 final = pd.concat([old_disp, nuovi], ignore_index=True)
                 conn.update(worksheet="Disponibilita", data=final)
+                
                 st.cache_data.clear()
-                st.success("Calendario aggiornato!")
+                st.success(f"✅ Registrate {len(lista_date)} giornate per {scelto}!")
                 st.rerun()
+            else:
+                st.warning("⚠️ Per favore, seleziona sia la data di inizio che quella di fine sul calendario.")
     else:
         st.warning("Nessun addetto in anagrafica.")
 
