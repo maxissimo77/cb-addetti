@@ -161,7 +161,7 @@ elif menu == "👥 Gestione Anagrafica":
             new_s = pd.DataFrame([{"Nome": n, "Cognome": c, "Mansione": m, "GiornoRiposoSettimanale": r}])
             final_s = pd.concat([data["addetti"], new_s], ignore_index=True)
             conn.update(worksheet="Addetti", data=final_s)
-	        st.cache_data.clear()
+            st.cache_data.clear()
             st.success("Staff aggiornato!")
             st.rerun()
     st.dataframe(data["addetti"])
