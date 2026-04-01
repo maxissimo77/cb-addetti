@@ -33,10 +33,10 @@ def get_data():
     # ttl=0 assicura che i dati siano sempre aggiornati dal foglio Google
     try:
         return {
-            "addetti": conn.read(worksheet="Addetti", ttl=0),
-            "disp": conn.read(worksheet="Disponibilita", ttl=0),
-            "fabbisogno": conn.read(worksheet="Fabbisogno", ttl=0),
-            "postazioni": conn.read(worksheet="Postazioni", ttl=0)
+            "addetti": conn.read(worksheet="Addetti", ttl=10),
+            "disp": conn.read(worksheet="Disponibilita", ttl=10),
+            "fabbisogno": conn.read(worksheet="Fabbisogno", ttl=10),
+            "postazioni": conn.read(worksheet="Postazioni", ttl=10)
         }
     except Exception as e:
         st.error(f"Errore di connessione: {e}")
