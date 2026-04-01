@@ -2,6 +2,42 @@ import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 from datetime import datetime, timedelta
+import calendar
+
+def visualizza_calendario_colorato(df_persona, anno, mese):
+    st.subheader(f"Riepilogo {calendar.month_name[mese]} {anno}")
+    
+    # Crea i nomi dei giorni della settimana
+    settimana = ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"]
+    cal = calendar.monthcalendar(anno, mese)
+    
+    # Costruiamo una tabella HTML personalizzata per i colori
+    html_cal = f'<table style="width:100%; border-collapse: collapse; text-align: center; font-family: sans-serif;">'
+    html_cal += '<tr>' + ''.join([f'<th style="padding:10px; background-color: #f0f2f6;">{g}</th>' for g in settimana]) + '</tr>'
+    
+    for week in cal:
+        html_cal += '<tr>'
+        for day in week:
+            if day == 0:
+                html_cal += '<td style="border: 1px solid #dee2e6; padding: 15px;"></td>'
+            else:
+                data_str = f"{anno}-{mese:02d}-{day:02d}"
+                # Cerchiamo lo stato per questo giorno
+                stato_giorno = df_persona[df_persona["Data"] == data_str]["Stato"].values
+                
+                color = "white" # Default
+                if len(stato_giorno) > 0:
+                    if "NON" in stato_giorno[0]:
+                        color = "#ff4b4b" # Rosso Streamlit
+                    else:
+                        color = "#29b05c" # Verde Streamlit
+                
+                html_cal += f'<td style="border: 1px solid #dee2e6; padding: 15px; background-color: {color}; color: {"white" if color != "white" else "black"}; font-weight: bold;">{day}</td>'
+        html_cal += '</tr>'
+    html_cal += '</table><br>'
+    
+    st.markdown(html_cal, unsafe_allow_html=True)
+    st.caption("🟢 Verde: Disponibile | 🔴 Rosso: Non Disponibile | ⚪ Bianco: Nessun dato")
 
 # --- CONFIGURAZIONE PAGINA ---
 st.set_page_config(page_title="Gestionale WaterPark Pro", layout="wide", page_icon="🌊")
@@ -102,50 +138,57 @@ if menu == "📊 Dashboard Oggi":
 
 # --- 2. AREA DISPONIBILITÀ STAFF ---
 elif menu == "📅 Area Disponibilità Staff":
-    st.header("Inserimento Disponibilità Multipla")
+    st.header("Calendario Disponibilità Staff")
     
     if not data["addetti"].empty:
-        # Pulizia nomi per evitare errori PyArrow
+        # Pulizia nomi
         df_temp = data["addetti"].copy()
         df_temp["Nome"] = df_temp["Nome"].astype(str).replace('nan', '')
         df_temp["Cognome"] = df_temp["Cognome"].astype(str).replace('nan', '')
         nomi = (df_temp["Nome"] + " " + df_temp["Cognome"]).tolist()
         
-        scelto = st.selectbox("Chi sei?", nomi)
+        col_sel, col_empty = st.columns([1, 2])
+        with col_sel:
+            scelto = st.selectbox("Seleziona il tuo nome:", nomi)
+            n, c = scelto.split(" ", 1)
         
-        # Selezione intervallo (Ritorna una tupla: (inizio, fine) o (inizio,))
-        date_range = st.date_input("Seleziona l'intervallo (clicca la data di inizio e quella di fine):", value=[])
+        # --- VISUALIZZAZIONE CALENDARIO ---
+        # Filtriamo i dati solo per la persona scelta
+        df_persona = data["disp"][data["disp"]["Cognome"] == c]
         
-        stato = st.radio("Tua disponibilità:", ["Disponibile", "NON Disponibile (Riposo/Ferie)"])
+        oggi = datetime.now()
+        visualizza_calendario_colorato(df_persona, oggi.year, oggi.month)
         
-        if st.button("Salva Date Intervallo"):
-            # Controllo se l'utente ha selezionato ENTRAMBE le date (inizio e fine)
+        st.divider()
+        
+        # --- INSERIMENTO NUOVE DATE ---
+        st.subheader("Aggiorna le tue date")
+        c1, c2 = st.columns(2)
+        with c1:
+            date_range = st.date_input("Seleziona Intervallo (Inizio e Fine):", value=[])
+        with c2:
+            stato = st.radio("Tua disponibilità:", ["Disponibile", "NON Disponibile (Riposo/Ferie)"])
+        
+        if st.button("Registra Date"):
             if isinstance(date_range, tuple) and len(date_range) == 2:
-                start_date, end_date = date_range
-                
-                # Generiamo la lista di tutte le date comprese tra inizio e fine
+                start_d, end_d = date_range
                 lista_date = []
-                current_date = start_date
-                while current_date <= end_date:
-                    lista_date.append(str(current_date))
-                    current_date += timedelta(days=1)
+                curr = start_d
+                while curr <= end_d:
+                    lista_date.append(str(curr))
+                    curr += timedelta(days=1)
                 
-                # Prepariamo i nuovi dati
-                n, c = scelto.split(" ", 1)
+                # Update dati
                 nuovi = pd.DataFrame([{"Nome": n, "Cognome": c, "Data": d, "Stato": stato} for d in lista_date])
-                
-                # Rimuoviamo i vecchi record per quelle date per evitare duplicati
                 old_disp = data["disp"][~((data["disp"]["Cognome"] == c) & (data["disp"]["Data"].isin(lista_date)))]
-                
-                # Unione e caricamento
                 final = pd.concat([old_disp, nuovi], ignore_index=True)
-                conn.update(worksheet="Disponibilita", data=final)
                 
+                conn.update(worksheet="Disponibilita", data=final)
                 st.cache_data.clear()
-                st.success(f"✅ Registrate {len(lista_date)} giornate per {scelto}!")
+                st.success("Date aggiornate correttamente!")
                 st.rerun()
             else:
-                st.warning("⚠️ Per favore, seleziona sia la data di inizio che quella di fine sul calendario.")
+                st.warning("Seleziona sia la data di inizio che quella di fine.")
     else:
         st.warning("Nessun addetto in anagrafica.")
 
