@@ -28,10 +28,10 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 
 def get_data():
     return {
-        "addetti": conn.read(worksheet="Addetti"),
-        "disp": conn.read(worksheet="Disponibilita"),
-        "fabbisogno": conn.read(worksheet="Fabbisogno"),
-        "postazioni": conn.read(worksheet="Postazioni")
+        "addetti": conn.read(worksheet="Addetti", ttl=0), # ttl=0 forza la lettura immediata
+        "disp": conn.read(worksheet="Disponibilita", ttl=0),
+        "fabbisogno": conn.read(worksheet="Fabbisogno", ttl=0),
+        "postazioni": conn.read(worksheet="Postazioni", ttl=0)
     }
 
 data = get_data()
@@ -161,6 +161,7 @@ elif menu == "👥 Gestione Anagrafica":
             new_s = pd.DataFrame([{"Nome": n, "Cognome": c, "Mansione": m, "GiornoRiposoSettimanale": r}])
             final_s = pd.concat([data["addetti"], new_s], ignore_index=True)
             conn.update(worksheet="Addetti", data=final_s)
+	    st.cache_data.clear()
             st.success("Staff aggiornato!")
             st.rerun()
     st.dataframe(data["addetti"])
