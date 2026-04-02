@@ -26,7 +26,12 @@ def get_data():
         st.stop()
 
 data = get_data()
-giorni_ita = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"]
+# Mappa giorni per il confronto con il calendario (0=Lunedì, 6=Domenica)
+mappa_giorni = {
+    "Lunedì": 0, "Martedì": 1, "Mercoledì": 2, "Giovedì": 3, 
+    "Venerdì": 4, "Sabato": 5, "Domenica": 6
+}
+giorni_ita = list(mappa_giorni.keys())
 
 # --- SISTEMA DI LOGIN ---
 def check_password():
@@ -68,22 +73,42 @@ if st.sidebar.button("Logout"):
     del st.session_state["role"]
     st.rerun()
 
-# --- FUNZIONE CALENDARIO ---
-def genera_mini_calendario(df_persona, anno, mese):
+# --- FUNZIONE CALENDARIO CON GIORNO RIPOSO ARANCIONE ---
+def genera_mini_calendario(df_persona, riposo_fisso, anno, mese):
     nomi_mesi_ita = {5: "MAGGIO", 6: "GIUGNO", 7: "LUGLIO", 8: "AGOSTO", 9: "SETTEMBRE"}
     st.markdown(f"<div style='text-align: center; background-color: #1f77b4; color: white; padding: 5px; border-radius: 5px;'><b>{nomi_mesi_ita[mese]}</b></div>", unsafe_allow_html=True)
+    
+    # Individua l'indice del giorno di riposo (0-6)
+    idx_riposo = mappa_giorni.get(riposo_fisso, -1)
+    
     cal = calendar.monthcalendar(anno, mese)
     html = '<table style="width:100%; border-collapse: collapse; text-align: center; font-size: 11px;">'
+    html += '<tr style="background:#f0f2f6;"><th>L</th><th>M</th><th>M</th><th>G</th><th>V</th><th>S</th><th>D</th></tr>'
+    
     for week in cal:
         html += '<tr>'
-        for day in week:
-            if day == 0: html += '<td></td>'
+        for i, day in enumerate(week): # i va da 0 a 6 (L-D)
+            if day == 0: 
+                html += '<td></td>'
             else:
                 d_str = f"{anno}-{mese:02d}-{day:02d}"
                 stato = df_persona[df_persona["Data"] == d_str]["Stato"].values
-                bg = "#29b05c" if len(stato) > 0 and "NON" not in stato[0] else ("#ff4b4b" if len(stato) > 0 else "white")
-                tx = "white" if len(stato) > 0 else "black"
-                html += f'<td style="background:{bg}; color:{tx}; border:1px solid #eee; padding:5px;">{day}</td>'
+                
+                # Logica Colori:
+                # 1. Se c'è stato manuale -> Verde/Rosso
+                # 2. Se è il giorno di riposo fisso -> Arancione
+                # 3. Altrimenti -> Bianco
+                bg = "white"
+                tx = "black"
+                
+                if len(stato) > 0:
+                    bg = "#29b05c" if "NON" not in stato[0] else "#ff4b4b"
+                    tx = "white"
+                elif i == idx_riposo:
+                    bg = "#ffa500" # Arancione (Orange)
+                    tx = "white"
+                
+                html += f'<td style="background:{bg}; color:{tx}; border:1px solid #eee; padding:5px; font-weight:bold;">{day}</td>'
         html += '</tr>'
     html += '</table>'
     st.markdown(html, unsafe_allow_html=True)
@@ -118,11 +143,21 @@ elif menu == "📅 Area Disponibilità Staff":
         nomi = (df_t["Nome"].astype(str) + " " + df_t["Cognome"].astype(str)).tolist()
         scelto = st.selectbox("Seleziona dipendente:", nomi)
         n, c = scelto.split(" ", 1)
+        
+        # Recupera il giorno di riposo fisso per questa persona
+        riposo_persona = df_t[df_t["Cognome"] == c]["GiornoRiposoSettimanale"].values[0]
+        
         df_p = data["disp"][data["disp"]["Cognome"] == c]
+        
+        st.write(f"**Giorno di riposo fisso:** {riposo_persona}")
+        st.caption("🟢 Disponibile | 🔴 Non Disponibile | 🟠 Riposo Fisso")
+        
         cols_cal = st.columns(5)
         for idx, m in enumerate([5, 6, 7, 8, 9]):
-            with cols_cal[idx]: genera_mini_calendario(df_p, 2026, m)
-        with st.expander("📝 Aggiorna Date"):
+            with cols_cal[idx]: 
+                genera_mini_calendario(df_p, riposo_persona, 2026, m)
+        
+        with st.expander("📝 Aggiorna Disponibilità Manuale"):
             dr = st.date_input("Periodo:", value=[], min_value=datetime(2026,5,1), max_value=datetime(2026,9,30))
             st_r = st.radio("Stato:", ["Disponibile", "NON Disponibile"])
             if st.button("Salva"):
@@ -149,73 +184,54 @@ elif menu == "⚙️ Pianifica Fabbisogno":
             conn.update(worksheet="Fabbisogno", data=pd.concat([old, pd.DataFrame(f_list)]))
             st.cache_data.clear()
             st.rerun()
-
-# --- 4. GESTIONE ANAGRAFICA (CON MODIFICA) ---
-elif menu == "👥 Gestione Anagrafica":
-    st.header("Anagrafica Staff")
-    
-    tab_add, tab_edit = st.tabs(["➕ Aggiungi Nuovo", "✏️ Modifica / Elimina"])
-    
-    with tab_add:
-        with st.form("new_staff"):
-            n_in = st.text_input("Nome")
-            c_in = st.text_input("Cognome")
-            m_in = st.selectbox("Postazione", lista_postazioni, key="add_m")
-            r_in = st.selectbox("Riposo", giorni_ita, key="add_r")
-            if st.form_submit_button("Inserisci"):
-                new_row = pd.DataFrame([{"Nome": n_in, "Cognome": c_in, "Mansione": m_in, "GiornoRiposoSettimanale": r_in}])
-                conn.update(worksheet="Addetti", data=pd.concat([data["addetti"], new_row], ignore_index=True))
+    with t2:
+        src = st.date_input("DA (Modello):", datetime.now() - timedelta(1))
+        dst = st.date_input("A (Destinazione):", value=[])
+        if st.button("Copia"):
+            mod = data["fabbisogno"][data["fabbisogno"]["Data"] == str(src)]
+            if not mod.empty and dst:
+                new = []
+                for d in dst:
+                    for _, r in mod.iterrows(): new.append({"Data": str(d), "Mansione": r["Mansione"], "Quantita": r["Quantita"]})
+                old = data["fabbisogno"][~data["fabbisogno"]["Data"].isin([str(x) for x in dst])]
+                conn.update(worksheet="Fabbisogno", data=pd.concat([old, pd.DataFrame(new)]))
                 st.cache_data.clear()
                 st.rerun()
 
-    with tab_edit:
+# --- 4. GESTIONE ANAGRAFICA ---
+elif menu == "👥 Gestione Anagrafica":
+    st.header("Anagrafica Staff")
+    t_add, t_edit = st.tabs(["➕ Aggiungi", "✏️ Modifica"])
+    with t_add:
+        with st.form("new"):
+            n_in, c_in = st.text_input("Nome"), st.text_input("Cognome")
+            m_in, r_in = st.selectbox("Postazione", lista_postazioni), st.selectbox("Riposo", giorni_ita)
+            if st.form_submit_button("Inserisci"):
+                new = pd.DataFrame([{"Nome": n_in, "Cognome": c_in, "Mansione": m_in, "GiornoRiposoSettimanale": r_in}])
+                conn.update(worksheet="Addetti", data=pd.concat([data["addetti"], new], ignore_index=True))
+                st.cache_data.clear()
+                st.rerun()
+    with t_edit:
         if not data["addetti"].empty:
-            df_edit = data["addetti"].copy()
-            # Creiamo un ID fittizio basato sulla riga per la modifica
-            df_edit['ID_INDEX'] = df_edit.index
-            df_edit['FullName'] = df_edit['Nome'] + " " + df_edit['Cognome']
-            
-            target = st.selectbox("Seleziona chi modificare:", df_edit['FullName'].tolist())
-            row_data = df_edit[df_edit['FullName'] == target].iloc[0]
-            idx_to_edit = int(row_data['ID_INDEX'])
-            
-            with st.form("edit_form"):
-                col1, col2 = st.columns(2)
-                new_n = col1.text_input("Nome", value=row_data['Nome'])
-                new_c = col2.text_input("Cognome", value=row_data['Cognome'])
-                
-                # Trova indice attuale della mansione per la selectbox
-                try: m_idx = lista_postazioni.index(row_data['Mansione'])
-                except: m_idx = 0
-                new_m = st.selectbox("Mansione", lista_postazioni, index=m_idx)
-                
-                # Trova indice attuale del riposo
-                try: r_idx = giorni_ita.index(row_data['GiornoRiposoSettimanale'])
-                except: r_idx = 0
-                new_r = st.selectbox("Riposo", giorni_ita, index=r_idx)
-                
-                c_mod, c_del = st.columns([1,1])
-                if c_mod.form_submit_button("💾 SALVA MODIFICHE"):
-                    data["addetti"].at[idx_to_edit, 'Nome'] = new_n
-                    data["addetti"].at[idx_to_edit, 'Cognome'] = new_c
-                    data["addetti"].at[idx_to_edit, 'Mansione'] = new_m
-                    data["addetti"].at[idx_to_edit, 'GiornoRiposoSettimanale'] = new_r
+            df_e = data["addetti"].copy()
+            df_e['Full'] = df_e['Nome'] + " " + df_e['Cognome']
+            sel = st.selectbox("Chi modificare?", df_e['Full'].tolist())
+            row = df_e[df_e['Full'] == sel].iloc[0]
+            idx = int(row.name)
+            with st.form("edit"):
+                en, ec = st.text_input("Nome", row['Nome']), st.text_input("Cognome", row['Cognome'])
+                em = st.selectbox("Mansione", lista_postazioni, index=lista_postazioni.index(row['Mansione']) if row['Mansione'] in lista_postazioni else 0)
+                er = st.selectbox("Riposo", giorni_ita, index=giorni_ita.index(row['GiornoRiposoSettimanale']))
+                c_s, c_d = st.columns(2)
+                if c_s.form_submit_button("Salva"):
+                    data["addetti"].loc[idx] = [en, ec, em, er]
                     conn.update(worksheet="Addetti", data=data["addetti"])
                     st.cache_data.clear()
-                    st.success("Dati aggiornati!")
                     st.rerun()
-                
-                if c_del.form_submit_button("🗑️ ELIMINA UTENTE"):
-                    updated_df = data["addetti"].drop(idx_to_edit)
-                    conn.update(worksheet="Addetti", data=updated_df)
+                if c_d.form_submit_button("Elimina"):
+                    conn.update(worksheet="Addetti", data=data["addetti"].drop(idx))
                     st.cache_data.clear()
-                    st.warning("Utente rimosso.")
                     st.rerun()
-        else:
-            st.info("Nessun dato presente.")
-
-    st.divider()
-    st.write("### Elenco Completo")
     st.dataframe(data["addetti"], use_container_width=True)
 
 # --- 5. POSTAZIONI ---
