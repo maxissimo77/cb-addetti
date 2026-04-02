@@ -6,7 +6,14 @@ import calendar
 
 # --- CONFIGURAZIONE PAGINA ---
 st.set_page_config(page_title="WaterPark Manager 2026", layout="wide", page_icon="🌊")
-pd.options.mode.string_storage = "python"
+
+# Forza la rimozione di eventuali stili predefiniti che bloccano l'HTML
+st.markdown("""
+    <style>
+    .reportview-container .main .block-container { padding-top: 1rem; }
+    table { width: 100%; border-collapse: collapse; }
+    </style>
+    """, unsafe_allow_html=True)
 
 # --- CONNESSIONE ---
 conn = st.connection("gsheets", type=GSheetsConnection)
@@ -37,7 +44,7 @@ if not check_password():
     st.stop()
 
 # --- CARICAMENTO DATI ---
-@st.cache_data(ttl=10)
+@st.cache_data(ttl=5)
 def get_data():
     return {
         "addetti": conn.read(worksheet="Addetti"),
@@ -52,50 +59,50 @@ giorni_ita = list(mappa_giorni.keys())
 opzioni_riposo = giorni_ita + ["Non Definito"]
 lista_postazioni = data["postazioni"]["Nome Postazione"].dropna().unique().tolist() if not data["postazioni"].empty else ["Generico"]
 
-# --- FUNZIONE CALENDARIO (STRICT HTML) ---
+# --- FUNZIONE CALENDARIO (VERSIONE ULTRA-PULITA) ---
 def genera_mini_calendario(df_persona, riposo_fisso, anno, mese):
     nomi_mesi_ita = {5: "MAGGIO", 6: "GIUGNO", 7: "LUGLIO", 8: "AGOSTO", 9: "SETTEMBRE"}
     
-    st.markdown(f"""
-        <div style='text-align: center; background-color: #1f77b4; color: white; 
-        padding: 5px; border-radius: 5px; margin-top: 10px; margin-bottom: 5px; font-weight: bold;'>
-            {nomi_mesi_ita[mese]}
-        </div>
-    """, unsafe_allow_html=True)
+    # Titolo Mese
+    st.markdown(f"<h4 style='text-align: center; color: #1f77b4;'>{nomi_mesi_ita[mese]}</h4>", unsafe_allow_html=True)
     
     idx_riposo = mappa_giorni.get(riposo_fisso, -1)
     cal = calendar.monthcalendar(anno, mese)
     
-    # Costruzione stringa HTML
-    html = '<table style="width:100%; border-collapse: collapse; text-align: center; font-size: 12px; table-layout: fixed; border: 1px solid #eee;">'
-    html += '<tr style="background:#f0f2f6;"><th>L</th><th>M</th><th>M</th><th>G</th><th>V</th><th>S</th><th>D</th></tr>'
+    # Costruzione tabella
+    tabella_html = "<table style='width:100%; border:1px solid #ddd; text-align:center; font-family: sans-serif;'>"
+    tabella_html += "<tr style='background:#f8f9fa;'><th>L</th><th>M</th><th>M</th><th>G</th><th>V</th><th>S</th><th>D</th></tr>"
     
     for week in cal:
-        html += '<tr>'
+        tabella_html += "<tr>"
         for i, day in enumerate(week):
             if day == 0:
-                html += '<td style="border: 1px solid #eee; padding: 10px;"></td>'
+                tabella_html += "<td style='border:1px solid #eee;'></td>"
             else:
+                # Logica Colore
                 d_str = f"{anno}-{mese:02d}-{day:02d}"
                 stato_serie = df_persona[df_persona["Data"].astype(str).str.contains(d_str, na=False)]["Stato"]
                 stato = stato_serie.values[0] if not stato_serie.empty else None
                 
-                dot_color = "transparent"
+                colore = "transparent"
                 if i == idx_riposo:
-                    dot_color = "#ffa500" # Arancio
+                    colore = "#ffa500" # Arancio
                 elif stato:
-                    dot_color = "#29b05c" if "NON" not in str(stato).upper() else "#ff4b4b" # Verde o Rosso
+                    colore = "#29b05c" if "NON" not in str(stato).upper() else "#ff4b4b"
                 
-                html += f'''
-                <td style="border: 1px solid #eee; padding: 5px; vertical-align: top;">
-                    <div style="font-weight: bold; margin-bottom: 3px; color: #333;">{day}</div>
-                    <div style="height: 10px; width: 10px; background-color: {dot_color}; border-radius: 50%; margin: 0 auto;"></div>
+                # Cella singola
+                tabella_html += f"""
+                <td style='border:1px solid #eee; padding: 5px;'>
+                    <div style='font-weight:bold; font-size:12px;'>{day}</div>
+                    <div style='height:8px; width:8px; background-color:{colore}; border-radius:50%; margin: 2px auto 0 auto;'></div>
                 </td>
-                '''
-        html += '</tr>'
-    html += '</table>'
+                """
+        tabella_html += "</tr>"
     
-    st.markdown(html, unsafe_allow_html=True)
+    tabella_html += "</table>"
+    
+    # ESECUZIONE RENDERING HTML
+    st.write(tabella_html, unsafe_allow_html=True)
 
 # --- SIDEBAR ---
 menu_options = ["📊 Dashboard Oggi", "📅 Riepilogo Riposi Settimanali"]
@@ -152,7 +159,7 @@ elif menu == "📅 Riepilogo Riposi Settimanali":
                 for _, r in non_def.iterrows():
                     html_nd += f'<div style="border: 2px solid #ffa500; color: #ffa500; padding: 5px 10px; border-radius: 8px; font-weight: bold;">{r["Nome"]} {r["Cognome"]}</div>'
                 html_nd += '</div>'
-                st.markdown(html_nd, unsafe_allow_html=True)
+                st.write(html_nd, unsafe_allow_html=True)
 
 # --- 3. AREA DISPONIBILITÀ (ADMIN) ---
 elif menu == "📅 Area Disponibilità Staff":
@@ -173,7 +180,7 @@ elif menu == "📅 Area Disponibilità Staff":
         with col_list[idx]:
             genera_mini_calendario(df_p, row_d['GiornoRiposoSettimanale'], 2026, mese)
     
-    with st.expander("Modifica Disponibilità Straordinaria"):
+    with st.expander("Aggiungi Disponibilità Straordinaria"):
         dr = st.date_input("Periodo:", value=[], min_value=datetime(2026,5,1), max_value=datetime(2026,9,30))
         st_r = st.radio("Stato:", ["Disponibile", "NON Disponibile"])
         if st.button("Salva Date"):
