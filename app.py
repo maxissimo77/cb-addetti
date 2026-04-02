@@ -1,10 +1,3 @@
-Ottima scelta, il logo di Caribe Bay ha uno stile tropicale che si sposa perfettamente con l'interfaccia.
-
-Ho aggiornato il codice inserendo il logo in alto nella sidebar, così rimarrà sempre visibile come punto di riferimento del brand mentre navighi tra le diverse sezioni. Ho anche aggiunto un piccolo tocco di stile per assicurarmi che non sia troppo grande.
-
-Ecco il codice completo e definitivo:
-
-Python
 import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
