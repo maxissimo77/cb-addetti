@@ -63,14 +63,17 @@ giorni_ita = list(mappa_giorni.keys())
 opzioni_riposo = giorni_ita + ["Non Definito"]
 lista_postazioni = data["postazioni"]["Nome Postazione"].dropna().unique().tolist() if not data["postazioni"].empty else ["Generico"]
 
-# --- FUNZIONE CALENDARIO ---
+# --- FUNZIONE CALENDARIO (LOGICA PRIORITÀ AGGIORNATA) ---
 def genera_mini_calendario(df_persona, riposo_fisso, anno, mese):
     nomi_mesi_ita = {5: "MAGGIO", 6: "GIUGNO", 7: "LUGLIO", 8: "AGOSTO", 9: "SETTEMBRE"}
     st.markdown(f"<div style='text-align: center; background-color: #1f77b4; color: white; padding: 5px; border-radius: 5px; margin-bottom: 5px;'><b>{nomi_mesi_ita[mese]}</b></div>", unsafe_allow_html=True)
-    idx_riposo = mappa_giorni.get(riposo_fisso, -1)
+    
+    idx_riposo_fisso = mappa_giorni.get(riposo_fisso, -1)
     cal = calendar.monthcalendar(anno, mese)
+    
     html = '<table style="width:100%; border-collapse: collapse; text-align: center; font-size: 12px; table-layout: fixed; border: 1px solid #ddd;">'
     html += '<tr style="background:rgba(128,128,128,0.1);"><th>L</th><th>M</th><th>M</th><th>G</th><th>V</th><th>S</th><th>D</th></tr>'
+    
     for week in cal:
         html += '<tr style="height: 35px;">'
         for i, day in enumerate(week):
@@ -78,13 +81,23 @@ def genera_mini_calendario(df_persona, riposo_fisso, anno, mese):
                 html += '<td style="border:1px solid rgba(128,128,128,0.1);"></td>'
             else:
                 d_str = f"{anno}-{mese:02d}-{day:02d}"
-                stato_serie = df_persona[(df_persona["Data"].astype(str).str.contains(d_str, na=False))]["Stato"]
+                stato_serie = df_persona[df_persona["Data"].astype(str).str.contains(d_str, na=False)]["Stato"]
+                
                 bg, tx = "transparent", "inherit"
-                if i == idx_riposo: 
-                    bg, tx = "#ffa500", "white"
-                elif not stato_serie.empty:
-                    bg = "#29b05c" if "NON" not in str(stato_serie.values[0]).upper() else "#ff4b4b"
-                    tx = "white"
+                
+                # 1. CONTROLLO NON DISPONIBILITÀ (ROSSO) - PRIORITÀ MASSIMA
+                is_not_available = not stato_serie[stato_serie.astype(str).str.contains("NON", case=False, na=False)].empty
+                
+                if is_not_available:
+                    bg, tx = "#ff4b4b", "white"
+                else:
+                    # 2. SE IL GIORNO NON È "NON DISPONIBILE", CONTROLLIAMO SE È IL RIPOSO (ARANCIONE)
+                    if i == idx_riposo_fisso:
+                        bg, tx = "#ffa500", "white"
+                    # 3. SE C'È UNA NOTA "DISPONIBILE" ESPLICITA (VERDE)
+                    elif not stato_serie.empty:
+                        bg, tx = "#29b05c", "white"
+                
                 html += f'<td style="background:{bg}; color:{tx}; border:1px solid rgba(128,128,128,0.2); font-weight:bold;">{day}</td>'
         html += '</tr>'
     st.markdown(html + '</table>', unsafe_allow_html=True)
@@ -166,7 +179,7 @@ elif menu == "📅 Riepilogo Riposi Settimanali":
                     html_non_def += '</div>'
                     st.markdown(html_non_def, unsafe_allow_html=True)
 
-# --- 3. GESTIONE RIPOSI RAPIDA (CON CONTEGGI IN ALTO) ---
+# --- 3. GESTIONE RIPOSI RAPIDA ---
 elif menu == "📝 Gestione Riposi Rapida":
     st.header("Gestione Rapida Riposi")
     if data["addetti"].empty:
@@ -178,8 +191,6 @@ elif menu == "📝 Gestione Riposi Rapida":
             add_m = df_mod[df_mod["Mansione"] == m]
             if not add_m.empty:
                 st.subheader(f"📍 {m}")
-                
-                # --- CALCOLO E VISUALIZZAZIONE TOTALI (ORA IN ALTO) ---
                 st.markdown(f"<div style='margin-bottom:5px; font-size: 0.9em; color: gray;'>Riepilogo riposi attuali per {m}:</div>", unsafe_allow_html=True)
                 conteggi = df_mod[df_mod["Mansione"] == m]["GiornoRiposoSettimanale"].value_counts()
                 
@@ -187,29 +198,17 @@ elif menu == "📝 Gestione Riposi Rapida":
                 for i, g in enumerate(giorni_ita):
                     n_rip = conteggi.get(g, 0)
                     with cols_count[i]:
-                        st.markdown(f"""
-                            <div style='text-align:center; border: 1px solid rgba(128,128,128,0.2); border-radius:5px; padding:5px; margin-bottom:15px;'>
-                                <small>{g[:3]}</small><br>
-                                <b style='color: {"#ffa500" if n_rip > 0 else "inherit"};'>{n_rip}</b>
-                            </div>
-                        """, unsafe_allow_html=True)
+                        st.markdown(f"<div style='text-align:center; border: 1px solid rgba(128,128,128,0.2); border-radius:5px; padding:5px; margin-bottom:15px;'><small>{g[:3]}</small><br><b style='color: {'#ffa500' if n_rip > 0 else 'inherit'};'>{n_rip}</b></div>", unsafe_allow_html=True)
                 
-                # Visualizzazione addetti sotto i conteggi
                 for idx, row in add_m.iterrows():
                     c1, c2 = st.columns([2, 2])
-                    with c1:
-                        st.write(f"**{row['Nome']} {row['Cognome']}**")
+                    with c1: st.write(f"**{row['Nome']} {row['Cognome']}**")
                     with c2:
                         current_rip = row['GiornoRiposoSettimanale']
                         try: idx_init = opzioni_riposo.index(current_rip)
                         except: idx_init = len(opzioni_riposo) - 1
-                        
-                        nuovo_rip = st.selectbox(
-                            f"Riposo per {idx}", opzioni_riposo, index=idx_init, 
-                            key=f"rip_rap_{idx}", label_visibility="collapsed"
-                        )
+                        nuovo_rip = st.selectbox(f"Riposo per {idx}", opzioni_riposo, index=idx_init, key=f"rip_rap_{idx}", label_visibility="collapsed")
                         df_mod.at[idx, 'GiornoRiposoSettimanale'] = nuovo_rip
-                
                 st.markdown("---")
         
         if st.button("💾 Salva Tutte le Modifiche", type="primary", use_container_width=True):
@@ -227,7 +226,7 @@ elif menu == "📅 Area Disponibilità Staff":
     row_d = df_t[df_t['Full'] == sel_dip].iloc[0]
     df_p = data["disp"][(data["disp"]["Nome"] == row_d['Nome']) & (data["disp"]["Cognome"] == row_d['Cognome'])]
     
-    st.markdown("""<div style='display: flex; gap: 15px; margin-bottom: 15px;'><div style='background:#ffa500; color:white; padding:5px 12px; border-radius:5px; font-size: 14px;'><b>🟠 Riposo Fisso</b></div><div style='background:#29b05c; color:white; padding:5px 12px; border-radius:5px; font-size: 14px;'><b>🟢 Disponibile</b></div><div style='background:#ff4b4b; color:white; padding:5px 12px; border-radius:5px; font-size: 14px;'><b>🔴 Non Disponibile</b></div></div>""", unsafe_allow_html=True)
+    st.markdown("""<div style='display: flex; gap: 15px; margin-bottom: 15px;'><div style='background:#ff4b4b; color:white; padding:5px 12px; border-radius:5px; font-size: 14px;'><b>🔴 NON Disponibile (Priorità Max)</b></div><div style='background:#ffa500; color:white; padding:5px 12px; border-radius:5px; font-size: 14px;'><b>🟠 Riposo Fisso</b></div><div style='background:#29b05c; color:white; padding:5px 12px; border-radius:5px; font-size: 14px;'><b>🟢 Disponibile</b></div></div>""", unsafe_allow_html=True)
     
     c_cal = st.columns(5)
     for idx, m in enumerate([5, 6, 7, 8, 9]):
