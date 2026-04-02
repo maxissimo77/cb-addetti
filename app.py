@@ -59,7 +59,7 @@ giorni_ita = list(mappa_giorni.keys())
 opzioni_riposo = giorni_ita + ["Non Definito"]
 lista_postazioni = data["postazioni"]["Nome Postazione"].dropna().unique().tolist() if not data["postazioni"].empty else ["Generico"]
 
-# --- FUNZIONE CALENDARIO (CELLE COLORATE) ---
+# --- FUNZIONE CALENDARIO (CELLA INTERAMENTE COLORATA) ---
 def genera_mini_calendario(df_persona, riposo_fisso, anno, mese):
     nomi_mesi_ita = {5: "MAGGIO", 6: "GIUGNO", 7: "LUGLIO", 8: "AGOSTO", 9: "SETTEMBRE"}
     st.markdown(f"<div style='text-align: center; background-color: #1f77b4; color: white; padding: 5px; border-radius: 5px; margin-bottom: 5px;'><b>{nomi_mesi_ita[mese]}</b></div>", unsafe_allow_html=True)
@@ -91,7 +91,7 @@ def genera_mini_calendario(df_persona, riposo_fisso, anno, mese):
     st.markdown(html + '</table>', unsafe_allow_html=True)
 
 # --- SIDEBAR ---
-menu_options = ["📊 Dashboard Oggi", "📅 Riepilogo Riposi Settimanali"]
+menu_options = ["📊 Dashboard", "📅 Riepilogo Riposi Settimanali"]
 if st.session_state["role"] == "Admin":
     menu_options += ["📅 Area Disponibilità Staff", "⚙️ Pianifica Fabbisogno", "👥 Gestione Anagrafica", "🚩 Gestione Postazioni", "🔑 Gestione Password"]
 
@@ -100,32 +100,49 @@ if st.sidebar.button("Logout"):
     del st.session_state["role"]
     st.rerun()
 
-# --- 1. DASHBOARD ---
-if menu == "📊 Dashboard Oggi":
-    st.header("Situazione Giornaliera")
-    d_sel = st.date_input("Seleziona Data:", datetime.now())
-    g_sett = giorni_ita[d_sel.weekday()]
+# --- 1. DASHBOARD (SETTIMANALE) ---
+if menu == "📊 Dashboard":
+    st.header("Dashboard Settimanale")
     
-    fabb = data["fabbisogno"][data["fabbisogno"]["Data"].astype(str).str.contains(str(d_sel), na=False)]
-    disp = data["disp"][data["disp"]["Data"].astype(str).str.contains(str(d_sel), na=False)]
-    staff = data["addetti"].copy()
-    
-    staff = staff[staff["GiornoRiposoSettimanale"] != g_sett]
-    if not disp.empty:
-        non_disp = disp[disp["Stato"].astype(str).str.contains("NON", case=False, na=False)]["Cognome"].tolist()
-        staff = staff[~staff["Cognome"].isin(non_disp)]
-    
-    cols = st.columns(3)
-    for i, post in enumerate(lista_postazioni):
-        presenti = staff[staff["Mansione"] == post]
-        f_row = fabb[fabb["Mansione"] == post]
-        req = int(f_row["Quantita"].iloc[0]) if not f_row.empty else 0
-        with cols[i % 3]:
-            st.metric(post, f"{len(presenti)}/{req}", delta=len(presenti)-req)
-            for _, r in presenti.iterrows(): 
-                st.caption(f"• {r['Nome']} {r['Cognome']}")
+    # Creazione di 7 Tab per i prossimi 7 giorni
+    date_range = [datetime.now() + timedelta(days=i) for i in range(7)]
+    nomi_tab = [d.strftime("%d/%m") + f" ({giorni_ita[d.weekday()]})" for d in date_range]
+    tabs = st.tabs(nomi_tab)
 
-# --- 2. RIEPILOGO RIPOSI (FINAL VERSION) ---
+    for idx, t in enumerate(tabs):
+        with t:
+            d_sel = date_range[idx].date()
+            g_sett = giorni_ita[d_sel.weekday()]
+            
+            # Filtro Fabbisogno e Disponibilità
+            fabb = data["fabbisogno"][data["fabbisogno"]["Data"].astype(str).str.contains(str(d_sel), na=False)]
+            disp = data["disp"][data["disp"]["Data"].astype(str).str.contains(str(d_sel), na=False)]
+            staff = data["addetti"].copy()
+            
+            # Escludi chi ha il riposo fisso quel giorno
+            staff = staff[staff["GiornoRiposoSettimanale"] != g_sett]
+            
+            # Escludi chi ha segnato "NON Disponibile"
+            if not disp.empty:
+                non_disp = disp[disp["Stato"].astype(str).str.contains("NON", case=False, na=False)]["Cognome"].tolist()
+                staff = staff[~staff["Cognome"].isin(non_disp)]
+            
+            cols = st.columns(3)
+            for i, post in enumerate(lista_postazioni):
+                presenti = staff[staff["Mansione"] == post]
+                f_row = fabb[fabb["Mansione"] == post]
+                req = int(f_row["Quantita"].iloc[0]) if not f_row.empty else 0
+                
+                with cols[i % 3]:
+                    st.metric(post, f"{len(presenti)}/{req}", delta=len(presenti)-req)
+                    if presenti.empty:
+                        st.write("_Nessun addetto_")
+                    else:
+                        for _, r in presenti.iterrows(): 
+                            st.caption(f"• {r['Nome']} {r['Cognome']}")
+            st.markdown("---")
+
+# --- 2. RIEPILOGO RIPOSI SETTIMANALI ---
 elif menu == "📅 Riepilogo Riposi Settimanali":
     st.header("Riepilogo Giorni di Riposo")
     
@@ -136,39 +153,24 @@ elif menu == "📅 Riepilogo Riposi Settimanali":
             with st.expander(f"📍 {m}", expanded=True):
                 add_m = data["addetti"][data["addetti"]["Mansione"] == m]
                 
-                # 1. Griglia giorni normali
                 c_rip = st.columns(7)
                 for i, g in enumerate(giorni_ita):
                     with c_rip[i]:
-                        # Intestazione Giorno
                         st.markdown(f"<div style='text-align:center; background:#eee; padding:5px; border-radius:5px; margin-bottom:12px;'><b>{g}</b></div>", unsafe_allow_html=True)
-                        
-                        # Filtro addetti per quel giorno
                         chi = add_m[add_m["GiornoRiposoSettimanale"] == g]
-                        
                         for _, r in chi.iterrows():
-                            # BOX AZZURRO: Centrato, con spazio sopra e SOTTO (margin-bottom)
-                            st.markdown(f"""
-                                <div style='text-align: center; background-color: #e7f4fb; color: #035e8b; padding: 10px 5px; border-radius: 5px; margin-top: 8px; margin-bottom: 10px; font-size: 14px; font-weight: 500; border: 1px solid #c2e5f2;'>
-                                    {r['Nome']} {r['Cognome']}
-                                </div>
-                            """, unsafe_allow_html=True)
+                            st.markdown(f"<div style='text-align: center; background-color: #e7f4fb; color: #035e8b; padding: 10px 5px; border-radius: 5px; margin-top: 8px; margin-bottom: 10px; font-size: 14px; font-weight: 500; border: 1px solid #c2e5f2;'>{r['Nome']} {r['Cognome']}</div>", unsafe_allow_html=True)
                 
-                # 2. Sezione Non Definiti (Box Arancioni)
                 non_def = add_m[add_m["GiornoRiposoSettimanale"] == "Non Definito"]
-                
                 if not non_def.empty:
-                    # Linea di separazione e titolo senza campanella
                     st.markdown("<div style='margin-top: 20px; border-top: 1px solid #ddd; padding-top: 10px;'><b>Riposo Non Definito:</b></div>", unsafe_allow_html=True)
-                    
-                    # Costruzione stringa HTML pulita (senza a capo interni per evitare bug visualizzazione)
-                    html_final = '<div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; margin-bottom: 20px;">'
+                    html_non_def = '<div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; margin-bottom: 20px;">'
                     for _, r in non_def.iterrows():
                         nome_full = f"{r['Nome']} {r['Cognome']}"
-                        html_final += f'<div style="border: 2px solid #ffa500; color: #ffa500; padding: 6px 15px; border-radius: 8px; font-weight: bold; background-color: white; display: inline-block; text-align: center; margin-bottom: 5px;">{nome_full}</div>'
-                    html_final += '</div>'
-                    
-                    st.markdown(html_final, unsafe_allow_html=True)
+                        html_non_def += f'<div style="border: 2px solid #ffa500; color: #ffa500; padding: 6px 15px; border-radius: 8px; font-weight: bold; background-color: white; display: inline-block; text-align: center; margin-bottom: 5px;">{nome_full}</div>'
+                    html_non_def += '</div>'
+                    st.markdown(html_non_def, unsafe_allow_html=True)
+
 # --- 3. AREA DISPONIBILITÀ (ADMIN) ---
 elif menu == "📅 Area Disponibilità Staff":
     st.header("Gestione Disponibilità")
@@ -179,10 +181,10 @@ elif menu == "📅 Area Disponibilità Staff":
     df_p = data["disp"][data["disp"]["Cognome"] == row_d['Cognome']]
     
     st.markdown("""
-    <div style='display: flex; gap: 15px; margin-bottom: 10px;'>
-        <div style='background:#ffa500; color:white; padding:5px 10px; border-radius:5px;'>🟠 Riposo Fisso</div>
-        <div style='background:#29b05c; color:white; padding:5px 10px; border-radius:5px;'>🟢 Disponibile</div>
-        <div style='background:#ff4b4b; color:white; padding:5px 10px; border-radius:5px;'>🔴 Non Disponibile</div>
+    <div style='display: flex; gap: 15px; margin-bottom: 15px;'>
+        <div style='background:#ffa500; color:white; padding:5px 12px; border-radius:5px; font-size: 14px;'><b>🟠 Riposo Fisso</b></div>
+        <div style='background:#29b05c; color:white; padding:5px 12px; border-radius:5px; font-size: 14px;'><b>🟢 Disponibile</b></div>
+        <div style='background:#ff4b4b; color:white; padding:5px 12px; border-radius:5px; font-size: 14px;'><b>🔴 Non Disponibile</b></div>
     </div>
     """, unsafe_allow_html=True)
     
