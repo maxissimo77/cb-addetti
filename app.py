@@ -1,8 +1,3 @@
-Ecco il codice completo, pulito e ottimizzato per risolvere il problema del "doppio clic" al login, integrare la priorità del Riposo Fisso (Arancione) e permettere la Modifica/Eliminazione dell'anagrafica.
-
-Sostituisci l'intero contenuto di app.py con questo:
-
-Python
 import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
