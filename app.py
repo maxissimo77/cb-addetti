@@ -196,4 +196,65 @@ elif menu == "⚙️ Pianifica Fabbisogno":
                 for d in dst:
                     for _, r in mod.iterrows(): new.append({"Data": str(d), "Mansione": r["Mansione"], "Quantita": r["Quantita"]})
                 old = data["fabbisogno"][~data["fabbisogno"]["Data"].isin([str(x) for x in dst])]
-                conn.update(worksheet="Fabbis
+                conn.update(worksheet="Fabbisogno", data=pd.concat([old, pd.DataFrame(new)]))
+                st.cache_data.clear()
+                st.rerun()
+
+# --- 4. GESTIONE ANAGRAFICA ---
+elif menu == "👥 Gestione Anagrafica":
+    st.header("Anagrafica Staff")
+    t_add, t_edit = st.tabs(["➕ Aggiungi", "✏️ Modifica"])
+    with t_add:
+        with st.form("new"):
+            n_in, c_in = st.text_input("Nome"), st.text_input("Cognome")
+            m_in, r_in = st.selectbox("Postazione", lista_postazioni), st.selectbox("Riposo", giorni_ita)
+            if st.form_submit_button("Inserisci"):
+                new = pd.DataFrame([{"Nome": n_in, "Cognome": c_in, "Mansione": m_in, "GiornoRiposoSettimanale": r_in}])
+                conn.update(worksheet="Addetti", data=pd.concat([data["addetti"], new], ignore_index=True))
+                st.cache_data.clear()
+                st.rerun()
+    with t_edit:
+        if not data["addetti"].empty:
+            df_e = data["addetti"].copy()
+            df_e['Full'] = df_e['Nome'] + " " + df_e['Cognome']
+            sel = st.selectbox("Chi modificare?", df_e['Full'].tolist())
+            row = df_e[df_e['Full'] == sel].iloc[0]
+            idx = int(row.name)
+            with st.form("edit"):
+                en, ec = st.text_input("Nome", row['Nome']), st.text_input("Cognome", row['Cognome'])
+                em = st.selectbox("Mansione", lista_postazioni, index=lista_postazioni.index(row['Mansione']) if row['Mansione'] in lista_postazioni else 0)
+                er = st.selectbox("Riposo", giorni_ita, index=giorni_ita.index(row['GiornoRiposoSettimanale']))
+                c_s, c_d = st.columns(2)
+                if c_s.form_submit_button("Salva"):
+                    data["addetti"].loc[idx] = [en, ec, em, er]
+                    conn.update(worksheet="Addetti", data=data["addetti"])
+                    st.cache_data.clear()
+                    st.rerun()
+                if c_d.form_submit_button("Elimina"):
+                    conn.update(worksheet="Addetti", data=data["addetti"].drop(idx))
+                    st.cache_data.clear()
+                    st.rerun()
+    st.dataframe(data["addetti"], use_container_width=True)
+
+# --- 5. POSTAZIONI ---
+elif menu == "🚩 Gestione Postazioni":
+    st.header("Postazioni Parco")
+    np = st.text_input("Nome Postazione")
+    if st.button("Salva"):
+        new = pd.DataFrame([{"Nome Postazione": np}])
+        conn.update(worksheet="Postazioni", data=pd.concat([data["postazioni"], new]))
+        st.cache_data.clear()
+        st.rerun()
+    st.table(data["postazioni"])
+
+# --- 6. PASSWORD ---
+elif menu == "🔑 Gestione Password":
+    st.header("Cambio Password")
+    with st.form("pwd"):
+        a_p = st.text_input("Admin", value=data["config"][data["config"]["Ruolo"]=="Admin"]["Password"].values[0])
+        u_p = st.text_input("User", value=data["config"][data["config"]["Ruolo"]=="User"]["Password"].values[0])
+        if st.form_submit_button("Aggiorna"):
+            new_c = pd.DataFrame([{"Ruolo": "Admin", "Password": a_p}, {"Ruolo": "User", "Password": u_p}])
+            conn.update(worksheet="Config", data=new_c)
+            st.cache_data.clear()
+            st.rerun()
