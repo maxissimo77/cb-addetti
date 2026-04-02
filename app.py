@@ -125,14 +125,13 @@ if menu == "📊 Dashboard Oggi":
             for _, r in presenti.iterrows(): 
                 st.caption(f"• {r['Nome']} {r['Cognome']}")
 
-# --- 2. RIEPILOGO RIPOSI (CON BOX ARANCIONE PER NON DEFINITI) ---
+# --- 2. RIEPILOGO RIPOSI ---
 elif menu == "📅 Riepilogo Riposi Settimanali":
     st.header("Riepilogo Giorni di Riposo")
     for m in lista_postazioni:
         with st.expander(f"📍 {m}", expanded=True):
             add_m = data["addetti"][data["addetti"]["Mansione"] == m]
             
-            # Parte 1: Tabella Settimanale (Giorni definiti)
             c_rip = st.columns(7)
             for i, g in enumerate(giorni_ita):
                 with c_rip[i]:
@@ -141,16 +140,15 @@ elif menu == "📅 Riepilogo Riposi Settimanali":
                     for _, r in chi.iterrows():
                         st.info(f"{r['Nome']} {r['Cognome']}")
             
-            # Parte 2: Sezione Non Definiti (Sotto la tabella)
+            # Sezione Non Definiti (Box Arancioni)
             non_def = add_m[add_m["GiornoRiposoSettimanale"] == "Non Definito"]
             if not non_def.empty:
                 st.markdown("<br>", unsafe_allow_html=True)
                 st.markdown("**🔔 Riposo Non Definito:**")
-                # Creiamo una riga di box arancioni
                 html_non_def = '<div style="display: flex; flex-wrap: wrap; gap: 10px;">'
                 for _, r in non_def.iterrows():
                     html_non_def += f"""
-                        <div style="border: 2px solid #ffa500; color: #ffa500; padding: 5px 12px; border-radius: 8px; font-weight: bold; background-color: white;">
+                        <div style="border: 2px solid #ffa500; color: #ffa500; padding: 5px 12px; border-radius: 8px; font-weight: bold; background-color: white; display: inline-block;">
                             {r['Nome']} {r['Cognome']}
                         </div>
                     """
