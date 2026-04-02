@@ -59,17 +59,14 @@ giorni_ita = list(mappa_giorni.keys())
 opzioni_riposo = giorni_ita + ["Non Definito"]
 lista_postazioni = data["postazioni"]["Nome Postazione"].dropna().unique().tolist() if not data["postazioni"].empty else ["Generico"]
 
-# --- FUNZIONE CALENDARIO (CELLA INTERAMENTE COLORATA) ---
+# --- FUNZIONE CALENDARIO ---
 def genera_mini_calendario(df_persona, riposo_fisso, anno, mese):
     nomi_mesi_ita = {5: "MAGGIO", 6: "GIUGNO", 7: "LUGLIO", 8: "AGOSTO", 9: "SETTEMBRE"}
     st.markdown(f"<div style='text-align: center; background-color: #1f77b4; color: white; padding: 5px; border-radius: 5px; margin-bottom: 5px;'><b>{nomi_mesi_ita[mese]}</b></div>", unsafe_allow_html=True)
-    
     idx_riposo = mappa_giorni.get(riposo_fisso, -1)
     cal = calendar.monthcalendar(anno, mese)
-    
     html = '<table style="width:100%; border-collapse: collapse; text-align: center; font-size: 12px; table-layout: fixed; border: 1px solid #ddd;">'
     html += '<tr style="background:#f0f2f6;"><th>L</th><th>M</th><th>M</th><th>G</th><th>V</th><th>S</th><th>D</th></tr>'
-    
     for week in cal:
         html += '<tr style="height: 35px;">'
         for i, day in enumerate(week):
@@ -78,14 +75,12 @@ def genera_mini_calendario(df_persona, riposo_fisso, anno, mese):
             else:
                 d_str = f"{anno}-{mese:02d}-{day:02d}"
                 stato_serie = df_persona[df_persona["Data"].astype(str).str.contains(d_str, na=False)]["Stato"]
-                
                 bg, tx = "white", "#333"
                 if i == idx_riposo: 
                     bg, tx = "#ffa500", "white"
                 elif not stato_serie.empty:
                     bg = "#29b05c" if "NON" not in str(stato_serie.values[0]).upper() else "#ff4b4b"
                     tx = "white"
-                
                 html += f'<td style="background:{bg}; color:{tx}; border:1px solid #ddd; font-weight:bold;">{day}</td>'
         html += '</tr>'
     st.markdown(html + '</table>', unsafe_allow_html=True)
@@ -100,26 +95,29 @@ if st.sidebar.button("Logout"):
     del st.session_state["role"]
     st.rerun()
 
-# --- 1. DASHBOARD (SETTIMANALE) ---
+# --- 1. DASHBOARD DINAMICA ---
 if menu == "📊 Dashboard":
-    st.header("Dashboard Settimanale")
+    st.header("Dashboard")
     
-    # Creazione di 7 Tab per i prossimi 7 giorni
-    date_range = [datetime.now() + timedelta(days=i) for i in range(7)]
+    # Selettore Data di Partenza
+    data_inizio = st.date_input("Visualizza a partire dal giorno:", datetime.now())
+    
+    # Generazione range di 7 giorni basato sulla selezione
+    date_range = [data_inizio + timedelta(days=i) for i in range(7)]
     nomi_tab = [d.strftime("%d/%m") + f" ({giorni_ita[d.weekday()]})" for d in date_range]
     tabs = st.tabs(nomi_tab)
 
     for idx, t in enumerate(tabs):
         with t:
-            d_sel = date_range[idx].date()
-            g_sett = giorni_ita[d_sel.weekday()]
+            curr_date = date_range[idx]
+            g_sett = giorni_ita[curr_date.weekday()]
             
             # Filtro Fabbisogno e Disponibilità
-            fabb = data["fabbisogno"][data["fabbisogno"]["Data"].astype(str).str.contains(str(d_sel), na=False)]
-            disp = data["disp"][data["disp"]["Data"].astype(str).str.contains(str(d_sel), na=False)]
+            fabb = data["fabbisogno"][data["fabbisogno"]["Data"].astype(str).str.contains(str(curr_date), na=False)]
+            disp = data["disp"][data["disp"]["Data"].astype(str).str.contains(str(curr_date), na=False)]
             staff = data["addetti"].copy()
             
-            # Escludi chi ha il riposo fisso quel giorno
+            # Escludi chi ha il riposo fisso
             staff = staff[staff["GiornoRiposoSettimanale"] != g_sett]
             
             # Escludi chi ha segnato "NON Disponibile"
@@ -145,14 +143,12 @@ if menu == "📊 Dashboard":
 # --- 2. RIEPILOGO RIPOSI SETTIMANALI ---
 elif menu == "📅 Riepilogo Riposi Settimanali":
     st.header("Riepilogo Giorni di Riposo")
-    
     if data["addetti"].empty:
         st.warning("Nessun addetto in anagrafica.")
     else:
         for m in lista_postazioni:
             with st.expander(f"📍 {m}", expanded=True):
                 add_m = data["addetti"][data["addetti"]["Mansione"] == m]
-                
                 c_rip = st.columns(7)
                 for i, g in enumerate(giorni_ita):
                     with c_rip[i]:
@@ -179,21 +175,11 @@ elif menu == "📅 Area Disponibilità Staff":
     sel_dip = st.selectbox("Seleziona dipendente:", df_t['Full'].tolist())
     row_d = df_t[df_t['Full'] == sel_dip].iloc[0]
     df_p = data["disp"][data["disp"]["Cognome"] == row_d['Cognome']]
-    
-    st.markdown("""
-    <div style='display: flex; gap: 15px; margin-bottom: 15px;'>
-        <div style='background:#ffa500; color:white; padding:5px 12px; border-radius:5px; font-size: 14px;'><b>🟠 Riposo Fisso</b></div>
-        <div style='background:#29b05c; color:white; padding:5px 12px; border-radius:5px; font-size: 14px;'><b>🟢 Disponibile</b></div>
-        <div style='background:#ff4b4b; color:white; padding:5px 12px; border-radius:5px; font-size: 14px;'><b>🔴 Non Disponibile</b></div>
-    </div>
-    """, unsafe_allow_html=True)
-    
+    st.markdown("""<div style='display: flex; gap: 15px; margin-bottom: 15px;'><div style='background:#ffa500; color:white; padding:5px 12px; border-radius:5px; font-size: 14px;'><b>🟠 Riposo Fisso</b></div><div style='background:#29b05c; color:white; padding:5px 12px; border-radius:5px; font-size: 14px;'><b>🟢 Disponibile</b></div><div style='background:#ff4b4b; color:white; padding:5px 12px; border-radius:5px; font-size: 14px;'><b>🔴 Non Disponibile</b></div></div>""", unsafe_allow_html=True)
     c_cal = st.columns(5)
     for idx, m in enumerate([5, 6, 7, 8, 9]):
-        with c_cal[idx]: 
-            genera_mini_calendario(df_p, row_d['GiornoRiposoSettimanale'], 2026, m)
-    
-    with st.expander("Modifica Disponibilità Straordinaria"):
+        with c_cal[idx]: genera_mini_calendario(df_p, row_d['GiornoRiposoSettimanale'], 2026, m)
+    with st.expander("Modifica Disponibilità"):
         dr = st.date_input("Periodo:", value=[], min_value=datetime(2026,5,1), max_value=datetime(2026,9,30))
         st_r = st.radio("Stato:", ["Disponibile", "NON Disponibile"])
         if st.button("Salva Date"):
