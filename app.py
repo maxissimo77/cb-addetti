@@ -52,22 +52,29 @@ giorni_ita = list(mappa_giorni.keys())
 opzioni_riposo = giorni_ita + ["Non Definito"]
 lista_postazioni = data["postazioni"]["Nome Postazione"].dropna().unique().tolist() if not data["postazioni"].empty else ["Generico"]
 
-# --- FUNZIONE CALENDARIO ---
+# --- FUNZIONE CALENDARIO (STRICT HTML) ---
 def genera_mini_calendario(df_persona, riposo_fisso, anno, mese):
     nomi_mesi_ita = {5: "MAGGIO", 6: "GIUGNO", 7: "LUGLIO", 8: "AGOSTO", 9: "SETTEMBRE"}
-    st.markdown(f"<div style='text-align: center; background-color: #1f77b4; color: white; padding: 5px; border-radius: 5px; margin-bottom: 5px;'><b>{nomi_mesi_ita[mese]}</b></div>", unsafe_allow_html=True)
+    
+    st.markdown(f"""
+        <div style='text-align: center; background-color: #1f77b4; color: white; 
+        padding: 5px; border-radius: 5px; margin-top: 10px; margin-bottom: 5px; font-weight: bold;'>
+            {nomi_mesi_ita[mese]}
+        </div>
+    """, unsafe_allow_html=True)
     
     idx_riposo = mappa_giorni.get(riposo_fisso, -1)
     cal = calendar.monthcalendar(anno, mese)
     
-    html = '<table style="width:100%; border-collapse: collapse; text-align: center; font-size: 11px;">'
+    # Costruzione stringa HTML
+    html = '<table style="width:100%; border-collapse: collapse; text-align: center; font-size: 12px; table-layout: fixed; border: 1px solid #eee;">'
     html += '<tr style="background:#f0f2f6;"><th>L</th><th>M</th><th>M</th><th>G</th><th>V</th><th>S</th><th>D</th></tr>'
     
     for week in cal:
         html += '<tr>'
         for i, day in enumerate(week):
             if day == 0:
-                html += '<td style="border:1px solid #eee; padding:5px;"></td>'
+                html += '<td style="border: 1px solid #eee; padding: 10px;"></td>'
             else:
                 d_str = f"{anno}-{mese:02d}-{day:02d}"
                 stato_serie = df_persona[df_persona["Data"].astype(str).str.contains(d_str, na=False)]["Stato"]
@@ -75,18 +82,19 @@ def genera_mini_calendario(df_persona, riposo_fisso, anno, mese):
                 
                 dot_color = "transparent"
                 if i == idx_riposo:
-                    dot_color = "#ffa500" 
+                    dot_color = "#ffa500" # Arancio
                 elif stato:
-                    dot_color = "#29b05c" if "NON" not in str(stato).upper() else "#ff4b4b"
+                    dot_color = "#29b05c" if "NON" not in str(stato).upper() else "#ff4b4b" # Verde o Rosso
                 
                 html += f'''
-                <td style="border:1px solid #eee; padding:5px; vertical-align: top;">
-                    <div style="font-weight: bold; margin-bottom: 2px;">{day}</div>
-                    <div style="height: 8px; width: 8px; background-color: {dot_color}; border-radius: 50%; margin: 0 auto;"></div>
+                <td style="border: 1px solid #eee; padding: 5px; vertical-align: top;">
+                    <div style="font-weight: bold; margin-bottom: 3px; color: #333;">{day}</div>
+                    <div style="height: 10px; width: 10px; background-color: {dot_color}; border-radius: 50%; margin: 0 auto;"></div>
                 </td>
                 '''
         html += '</tr>'
     html += '</table>'
+    
     st.markdown(html, unsafe_allow_html=True)
 
 # --- SIDEBAR ---
@@ -94,12 +102,12 @@ menu_options = ["📊 Dashboard Oggi", "📅 Riepilogo Riposi Settimanali"]
 if st.session_state["role"] == "Admin":
     menu_options += ["📅 Area Disponibilità Staff", "⚙️ Pianifica Fabbisogno", "👥 Gestione Anagrafica", "🚩 Gestione Postazioni", "🔑 Gestione Password"]
 
-menu = st.sidebar.radio("Vai a:", menu_options)
+menu = st.sidebar.radio("Navigazione:", menu_options)
 if st.sidebar.button("Logout"):
     del st.session_state["role"]
     st.rerun()
 
-# --- 1. DASHBOARD (MODIFICATA: Nomi visibili a tutti) ---
+# --- 1. DASHBOARD ---
 if menu == "📊 Dashboard Oggi":
     st.header("Situazione Giornaliera")
     d_sel = st.date_input("Data:", datetime.now())
@@ -120,38 +128,31 @@ if menu == "📊 Dashboard Oggi":
         req = int(f_row["Quantita"].iloc[0]) if not f_row.empty else 0
         with cols[i % 3]:
             st.metric(post, f"{len(presenti)}/{req}", delta=len(presenti)-req)
-            # LOGICA AGGIORNATA: I nomi vengono mostrati a prescindere dal ruolo
-            if not presenti.empty:
-                for _, r in presenti.iterrows(): 
-                    st.caption(f"• {r['Nome']} {r['Cognome']}")
-            else:
-                st.caption("Nessun addetto disponibile")
+            for _, r in presenti.iterrows():
+                st.caption(f"• {r['Nome']} {r['Cognome']}")
 
 # --- 2. RIEPILOGO RIPOSI ---
 elif menu == "📅 Riepilogo Riposi Settimanali":
     st.header("Riepilogo Giorni di Riposo")
-    if data["addetti"].empty:
-        st.warning("Nessun addetto in anagrafica.")
-    else:
-        for m in lista_postazioni:
-            with st.expander(f"📍 {m}", expanded=True):
-                add_m = data["addetti"][data["addetti"]["Mansione"] == m]
-                c_rip = st.columns(7)
-                for i, g in enumerate(giorni_ita):
-                    with c_rip[i]:
-                        st.markdown(f"<div style='text-align:center; background:#eee; padding:5px; border-radius:5px;'><b>{g}</b></div>", unsafe_allow_html=True)
-                        chi = add_m[add_m["GiornoRiposoSettimanale"] == g]
-                        for _, r in chi.iterrows(): st.info(f"{r['Nome']} {r['Cognome']}")
-                
-                non_def = add_m[add_m["GiornoRiposoSettimanale"] == "Non Definito"]
-                if not non_def.empty:
-                    st.write("---")
-                    st.markdown("**Riposo Non Definito (Turnazione):**")
-                    html_non_def = '<div style="display: flex; flex-wrap: wrap; gap: 10px;">'
-                    for _, r in non_def.iterrows():
-                        html_non_def += f'<div style="border: 2px solid #ffa500; color: #ffa500; padding: 5px 15px; border-radius: 10px; font-weight: bold;">{r["Nome"]} {r["Cognome"]}</div>'
-                    html_non_def += '</div>'
-                    st.markdown(html_non_def, unsafe_allow_html=True)
+    for m in lista_postazioni:
+        with st.expander(f"📍 {m}", expanded=True):
+            add_m = data["addetti"][data["addetti"]["Mansione"] == m]
+            c_rip = st.columns(7)
+            for i, g in enumerate(giorni_ita):
+                with c_rip[i]:
+                    st.markdown(f"**{g}**")
+                    chi = add_m[add_m["GiornoRiposoSettimanale"] == g]
+                    for _, r in chi.iterrows(): st.info(f"{r['Nome']} {r['Cognome']}")
+            
+            non_def = add_m[add_m["GiornoRiposoSettimanale"] == "Non Definito"]
+            if not non_def.empty:
+                st.write("---")
+                st.markdown("**Turnazione (Non Definito):**")
+                html_nd = '<div style="display: flex; gap: 10px; flex-wrap: wrap;">'
+                for _, r in non_def.iterrows():
+                    html_nd += f'<div style="border: 2px solid #ffa500; color: #ffa500; padding: 5px 10px; border-radius: 8px; font-weight: bold;">{r["Nome"]} {r["Cognome"]}</div>'
+                html_nd += '</div>'
+                st.markdown(html_nd, unsafe_allow_html=True)
 
 # --- 3. AREA DISPONIBILITÀ (ADMIN) ---
 elif menu == "📅 Area Disponibilità Staff":
@@ -163,11 +164,16 @@ elif menu == "📅 Area Disponibilità Staff":
     df_p = data["disp"][data["disp"]["Cognome"] == row_d['Cognome']]
     
     st.markdown("🟡 **Arancio**: Riposo Fisso | 🟢 **Verde**: Disponibile | 🔴 **Rosso**: NON Disponibile")
-    c_cal = st.columns(5)
-    for idx, m in enumerate([5, 6, 7, 8, 9]):
-        with c_cal[idx]: genera_mini_calendario(df_p, row_d['GiornoRiposoSettimanale'], 2026, m)
     
-    with st.expander("Modifica Disponibilità"):
+    c1, c2, c3, c4, c5 = st.columns(5)
+    mesi = [5, 6, 7, 8, 9]
+    col_list = [c1, c2, c3, c4, c5]
+    
+    for idx, mese in enumerate(mesi):
+        with col_list[idx]:
+            genera_mini_calendario(df_p, row_d['GiornoRiposoSettimanale'], 2026, mese)
+    
+    with st.expander("Modifica Disponibilità Straordinaria"):
         dr = st.date_input("Periodo:", value=[], min_value=datetime(2026,5,1), max_value=datetime(2026,9,30))
         st_r = st.radio("Stato:", ["Disponibile", "NON Disponibile"])
         if st.button("Salva Date"):
@@ -214,7 +220,7 @@ elif menu == "⚙️ Pianifica Fabbisogno":
 
 # --- 5. GESTIONE ANAGRAFICA ---
 elif menu == "👥 Gestione Anagrafica":
-    st.header("Anagrafica Staff")
+    st.header("Anagrafica")
     ta, te = st.tabs(["➕ Aggiungi", "✏️ Modifica"])
     with ta:
         with st.form("a"):
@@ -261,7 +267,7 @@ elif menu == "🚩 Gestione Postazioni":
 
 # --- 7. PASSWORD ---
 elif menu == "🔑 Gestione Password":
-    st.header("Password")
+    st.header("Gestione Password")
     conf_p = conn.read(worksheet="Config", ttl=0)
     with st.form("p"):
         ap = st.text_input("Admin", value=conf_p[conf_p["Ruolo"]=="Admin"]["Password"].values[0])
