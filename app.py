@@ -150,21 +150,68 @@ elif menu == "📅 Area Disponibilità Staff":
                     st.cache_data.clear()
                     st.rerun()
 
-# --- 3. PIANIFICA FABBISOGNO ---
+# --- 3. PIANIFICA FABBISOGNO (VERSIONE ROBUSTA) ---
 elif menu == "⚙️ Pianifica Fabbisogno":
     st.header("Fabbisogno Staff")
     t1, t2 = st.tabs(["Giorno Singolo", "Copia Massiva"])
+    
     with t1:
-        dt = st.date_input("Data:", datetime.now())
+        dt = st.date_input("Data da configurare:", datetime.now())
         f_list = []
+        st.write(f"Imposta fabbisogno per il giorno: {dt}")
         for p in lista_postazioni:
-            v = st.number_input(f"Richiesti per {p}:", min_value=0, key=p)
+            # Cerchiamo se esiste già un valore per quel giorno/postazione per pre-compilare
+            esistente = data["fabbisogno"][(data["fabbisogno"]["Data"] == str(dt)) & (data["fabbisogno"]["Mansione"] == p)]
+            val_default = int(esistente["Quantita"].iloc[0]) if not esistente.empty else 0
+            
+            v = st.number_input(f"Addetti per {p}:", min_value=0, value=val_default, key=f"sing_{p}")
             f_list.append({"Data": str(dt), "Mansione": p, "Quantita": v})
-        if st.button("Salva"):
+            
+        if st.button("Salva Fabbisogno Giorno Singolo"):
             old = data["fabbisogno"][data["fabbisogno"]["Data"] != str(dt)]
-            conn.update(worksheet="Fabbisogno", data=pd.concat([old, pd.DataFrame(f_list)]))
+            nuovo_fabb = pd.concat([old, pd.DataFrame(f_list)], ignore_index=True)
+            conn.update(worksheet="Fabbisogno", data=nuovo_fabb)
             st.cache_data.clear()
+            st.success(f"Fabbisogno per il {dt} salvato!")
             st.rerun()
+
+    with t2:
+        st.subheader("Copia configurazione su più giorni")
+        src = st.date_input("1. Seleziona il giorno MODELLO (da dove copiare):", datetime.now() - timedelta(1))
+        
+        # Carichiamo i dati del modello per verifica
+        modello = data["fabbisogno"][data["fabbisogno"]["Data"] == str(src)]
+        
+        if modello.empty:
+            st.warning(f"⚠️ Il giorno {src} non ha un fabbisogno salvato. Configuralo prima nel tab 'Giorno Singolo'.")
+        else:
+            st.write(f"✅ Il modello del {src} contiene {len(modello)} postazioni configurate.")
+            dst = st.date_input("2. Seleziona i giorni di DESTINAZIONE:", value=None)
+            
+            # Nota: st.date_input con selezione multipla o range può essere insidioso
+            if st.button("Esegui Copia Massiva"):
+                if not dst:
+                    st.error("Seleziona almeno un giorno di destinazione!")
+                else:
+                    # Gestiamo sia se dst è una singola data, una lista o un range
+                    if isinstance(dst, list) or isinstance(dst, tuple):
+                        date_dest = [str(d) for d in dst]
+                    else:
+                        date_dest = [str(dst)]
+                    
+                    new_rows = []
+                    for d in date_dest:
+                        for _, r in modello.iterrows():
+                            new_rows.append({"Data": d, "Mansione": r["Mansione"], "Quantita": r["Quantita"]})
+                    
+                    if new_rows:
+                        # Rimuoviamo i vecchi dati per le date di destinazione per evitare duplicati
+                        old = data["fabbisogno"][~data["fabbisogno"]["Data"].isin(date_dest)]
+                        nuovo_fabb = pd.concat([old, pd.DataFrame(new_rows)], ignore_index=True)
+                        conn.update(worksheet="Fabbisogno", data=nuovo_fabb)
+                        st.cache_data.clear()
+                        st.success(f"Copiato con successo su {len(date_dest)} giorni!")
+                        st.rerun()
 
 # --- 4. GESTIONE ANAGRAFICA (CON EDIT) ---
 elif menu == "👥 Gestione Anagrafica":
