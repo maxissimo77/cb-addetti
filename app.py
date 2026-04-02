@@ -125,7 +125,7 @@ if menu == "📊 Dashboard Oggi":
             for _, r in presenti.iterrows(): 
                 st.caption(f"• {r['Nome']} {r['Cognome']}")
 
-# --- 2. RIEPILOGO RIPOSI ---
+# --- 2. RIEPILOGO RIPOSI (FINAL VERSION) ---
 elif menu == "📅 Riepilogo Riposi Settimanali":
     st.header("Riepilogo Giorni di Riposo")
     
@@ -141,54 +141,34 @@ elif menu == "📅 Riepilogo Riposi Settimanali":
                 for i, g in enumerate(giorni_ita):
                     with c_rip[i]:
                         # Intestazione Giorno
-                        st.markdown(f"""
-                            <div style='text-align:center; background:#eee; padding:5px; border-radius:5px; margin-bottom:10px;'>
-                                <b>{g}</b>
-                            </div>
-                        """, unsafe_allow_html=True)
+                        st.markdown(f"<div style='text-align:center; background:#eee; padding:5px; border-radius:5px; margin-bottom:12px;'><b>{g}</b></div>", unsafe_allow_html=True)
                         
                         # Filtro addetti per quel giorno
                         chi = add_m[add_m["GiornoRiposoSettimanale"] == g]
                         
                         for _, r in chi.iterrows():
-                            # BOX NOME: Centrato, staccato dal giorno e con sfondo azzurro
+                            # BOX AZZURRO: Centrato, con spazio sopra e SOTTO (margin-bottom)
                             st.markdown(f"""
-                                <div style='
-                                    text-align: center; 
-                                    background-color: #e7f4fb; 
-                                    color: #035e8b; 
-                                    padding: 8px 5px; 
-                                    border-radius: 5px; 
-                                    margin-top: 8px; 
-                                    font-size: 14px; 
-                                    font-weight: 500;
-                                    border: 1px solid #c2e5f2;
-                                '>
+                                <div style='text-align: center; background-color: #e7f4fb; color: #035e8b; padding: 10px 5px; border-radius: 5px; margin-top: 8px; margin-bottom: 10px; font-size: 14px; font-weight: 500; border: 1px solid #c2e5f2;'>
                                     {r['Nome']} {r['Cognome']}
                                 </div>
                             """, unsafe_allow_html=True)
                 
-                # 2. Sezione Non Definiti (Sostituisci da qui in poi)
-            non_def = add_m[add_m["GiornoRiposoSettimanale"] == "Non Definito"]
-            
-            if not non_def.empty:
-                st.markdown("<br><hr>", unsafe_allow_html=True) 
-                st.markdown("**🔔 Riposo Non Definito:**")
+                # 2. Sezione Non Definiti (Box Arancioni)
+                non_def = add_m[add_m["GiornoRiposoSettimanale"] == "Non Definito"]
                 
-                # Iniziamo la stringa contenitore
-                html_codice = '<div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px;">'
-                
-                for _, r in non_def.iterrows():
-                    nome_box = f"{r['Nome']} {r['Cognome']}"
-                    # Aggiungiamo ogni singolo box alla stringa
-                    html_codice += f'<div style="border: 2px solid #ffa500; color: #ffa500; padding: 5px 12px; border-radius: 8px; font-weight: bold; background-color: white; display: inline-block; text-align: center;">{nome_box}</div>'
-                
-                # Chiudiamo il div contenitore
-                html_codice += '</div>'
-                
-                # Stampiamo tutto in un colpo solo
-                st.markdown(html_codice, unsafe_allow_html=True)
-
+                if not non_def.empty:
+                    # Linea di separazione e titolo senza campanella
+                    st.markdown("<div style='margin-top: 20px; border-top: 1px solid #ddd; padding-top: 10px;'><b>Riposo Non Definito:</b></div>", unsafe_allow_html=True)
+                    
+                    # Costruzione stringa HTML pulita (senza a capo interni per evitare bug visualizzazione)
+                    html_final = '<div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; margin-bottom: 20px;">'
+                    for _, r in non_def.iterrows():
+                        nome_full = f"{r['Nome']} {r['Cognome']}"
+                        html_final += f'<div style="border: 2px solid #ffa500; color: #ffa500; padding: 6px 15px; border-radius: 8px; font-weight: bold; background-color: white; display: inline-block; text-align: center; margin-bottom: 5px;">{nome_full}</div>'
+                    html_final += '</div>'
+                    
+                    st.markdown(html_final, unsafe_allow_html=True)
 # --- 3. AREA DISPONIBILITÀ (ADMIN) ---
 elif menu == "📅 Area Disponibilità Staff":
     st.header("Gestione Disponibilità")
