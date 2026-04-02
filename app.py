@@ -55,20 +55,69 @@ def get_data():
     }
 
 data = get_data()
+mappa_giorni = {"Lunedì": 0, "Martedì": 1, "Mercoledì": 2, "Giovedì": 3, "Venerdì": 4, "Sabaimport streamlit as st
+from streamlit_gsheets import GSheetsConnection
+import pandas as pd
+from datetime import datetime, timedelta
+import calendar
+
+# --- CONFIGURAZIONE PAGINA ---
+st.set_page_config(page_title="WaterPark Manager 2026", layout="wide", page_icon="🌊")
+pd.options.mode.string_storage = "python"
+
+# --- CONNESSIONE ---
+conn = st.connection("gsheets", type=GSheetsConnection)
+
+# --- SISTEMA DI LOGIN ---
+def check_password():
+    if "role" not in st.session_state:
+        st.title("🌊 WaterPark Staff Login")
+        pwd_input = st.text_input("Inserisci Password", type="password")
+        if st.button("Accedi"):
+            try:
+                conf = conn.read(worksheet="Config", ttl=0)
+                conf.columns = conf.columns.str.strip()
+                conf["Ruolo"] = conf["Ruolo"].astype(str).str.strip()
+                conf["Password"] = conf["Password"].astype(str).str.strip()
+                admin_pwd = str(conf[conf["Ruolo"] == "Admin"]["Password"].values[0])
+                user_pwd = str(conf[conf["Ruolo"] == "User"]["Password"].values[0])
+                if pwd_input == admin_pwd:
+                    st.session_state["role"] = "Admin"
+                    st.rerun()
+                elif pwd_input == user_pwd:
+                    st.session_state["role"] = "User"
+                    st.rerun()
+                else: st.error("❌ Password errata.")
+            except Exception: st.error("⚠️ Errore nel foglio 'Config'.")
+        return False
+    return True
+
+if not check_password():
+    st.stop()
+
+# --- CARICAMENTO DATI ---
+@st.cache_data(ttl=10)
+def get_data():
+    return {
+        "addetti": conn.read(worksheet="Addetti"),
+        "disp": conn.read(worksheet="Disponibilita"),
+        "fabbisogno": conn.read(worksheet="Fabbisogno"),
+        "postazioni": conn.read(worksheet="Postazioni")
+    }
+
+data = get_data()
 mappa_giorni = {"Lunedì": 0, "Martedì": 1, "Mercoledì": 2, "Giovedì": 3, "Venerdì": 4, "Sabato": 5, "Domenica": 6}
 giorni_ita = list(mappa_giorni.keys())
 lista_postazioni = data["postazioni"]["Nome Postazione"].dropna().unique().tolist() if not data["postazioni"].empty else ["Generico"]
 
-# --- FUNZIONE CALENDARIO (PRIORITÀ RIPOSO) ---
+# --- FUNZIONE CALENDARIO ---
 def genera_mini_calendario(df_persona, riposo_fisso, anno, mese):
     nomi_mesi_ita = {5: "MAGGIO", 6: "GIUGNO", 7: "LUGLIO", 8: "AGOSTO", 9: "SETTEMBRE"}
     st.markdown(f"<div style='text-align: center; background-color: #1f77b4; color: white; padding: 5px; border-radius: 5px; margin-bottom: 5px;'><b>{nomi_mesi_ita[mese]}</b></div>", unsafe_allow_html=True)
-    
     idx_riposo = mappa_giorni.get(riposo_fisso, -1)
     cal = calendar.monthcalendar(anno, mese)
     html = '<table style="width:100%; border-collapse: collapse; text-align: center; font-size: 11px;">'
     html += '<tr style="background:#f0f2f6;"><th>L</th><th>M</th><th>M</th><th>G</th><th>V</th><th>S</th><th>D</th></tr>'
-    
     for week in cal:
         html += '<tr>'
         for i, day in enumerate(week):
@@ -76,21 +125,16 @@ def genera_mini_calendario(df_persona, riposo_fisso, anno, mese):
             else:
                 d_str = f"{anno}-{mese:02d}-{day:02d}"
                 stato = df_persona[df_persona["Data"] == d_str]["Stato"].values
-                # PRIORITÀ 1: Riposo Fisso (Arancione)
-                if i == idx_riposo:
-                    bg, tx = "#ffa500", "white"
-                # PRIORITÀ 2: Inserimento Manuale (Verde/Rosso)
+                if i == idx_riposo: bg, tx = "#ffa500", "white"
                 elif len(stato) > 0:
                     bg = "#29b05c" if "NON" not in stato[0] else "#ff4b4b"
                     tx = "white"
-                else:
-                    bg, tx = "white", "black"
+                else: bg, tx = "white", "black"
                 html += f'<td style="background:{bg}; color:{tx}; border:1px solid #eee; padding:5px; font-weight:bold;">{day}</td>'
         html += '</tr>'
     st.markdown(html + '</table>', unsafe_allow_html=True)
 
 # --- SIDEBAR ---
-st.sidebar.title(f"👤 {st.session_state['role']}")
 menu_options = ["📊 Dashboard Oggi"]
 if st.session_state["role"] == "Admin":
     menu_options += ["📅 Area Disponibilità Staff", "⚙️ Pianifica Fabbisogno", "👥 Gestione Anagrafica", "🚩 Gestione Postazioni", "🔑 Gestione Password"]
@@ -112,7 +156,6 @@ if menu == "📊 Dashboard Oggi":
     if not disp.empty:
         non_disp = disp[disp["Stato"].astype(str).str.contains("NON", na=False)]["Cognome"].tolist()
         staff = staff[~staff["Cognome"].isin(non_disp)]
-    
     cols = st.columns(3)
     for i, post in enumerate(lista_postazioni):
         presenti = staff[staff["Mansione"] == post]
@@ -123,102 +166,88 @@ if menu == "📊 Dashboard Oggi":
             if st.session_state["role"] == "Admin":
                 for _, r in presenti.iterrows(): st.caption(f"• {r['Nome']} {r['Cognome']}")
 
-# --- 2. AREA DISPONIBILITÀ (SOLO ADMIN) ---
+# --- 2. AREA DISPONIBILITÀ ---
 elif menu == "📅 Area Disponibilità Staff":
-    st.header("Calendario Stagionale 2026")
-    if not data["addetti"].empty:
-        df_t = data["addetti"].copy()
-        df_t['Full'] = df_t['Nome'] + " " + df_t['Cognome']
-        scelto = st.selectbox("Seleziona dipendente:", df_t['Full'].tolist())
-        row = df_t[df_t['Full'] == scelto].iloc[0]
-        df_p = data["disp"][data["disp"]["Cognome"] == row['Cognome']]
-        
-        st.caption("🟠 Riposo Fisso (Priorità) | 🟢 Disponibile | 🔴 Non Disponibile")
-        c_cal = st.columns(5)
-        for idx, m in enumerate([5, 6, 7, 8, 9]):
-            with c_cal[idx]: genera_mini_calendario(df_p, row['GiornoRiposoSettimanale'], 2026, m)
-        
-        with st.expander("Modifica Disponibilità Straordinaria"):
-            dr = st.date_input("Periodo:", value=[], min_value=datetime(2026,5,1), max_value=datetime(2026,9,30))
-            st_r = st.radio("Stato:", ["Disponibile", "NON Disponibile"])
-            if st.button("Salva Date"):
-                if len(dr) == 2:
-                    d_list = [str(dr[0] + timedelta(days=x)) for x in range((dr[1]-dr[0]).days + 1)]
-                    nuovi = pd.DataFrame([{"Nome": row['Nome'], "Cognome": row['Cognome'], "Data": d, "Stato": st_r} for d in d_list])
-                    old = data["disp"][~((data["disp"]["Cognome"] == row['Cognome']) & (data["disp"]["Data"].isin(d_list)))]
-                    conn.update(worksheet="Disponibilita", data=pd.concat([old, nuovi]))
-                    st.cache_data.clear()
-                    st.rerun()
+    st.header("Calendario 2026")
+    df_t = data["addetti"].copy()
+    df_t['Full'] = df_t['Nome'] + " " + df_t['Cognome']
+    scelto = st.selectbox("Seleziona dipendente:", df_t['Full'].tolist())
+    row = df_t[df_t['Full'] == scelto].iloc[0]
+    df_p = data["disp"][data["disp"]["Cognome"] == row['Cognome']]
+    st.caption("🟠 Riposo Fisso | 🟢 Disponibile | 🔴 Non Disponibile")
+    c_cal = st.columns(5)
+    for idx, m in enumerate([5, 6, 7, 8, 9]):
+        with c_cal[idx]: genera_mini_calendario(df_p, row['GiornoRiposoSettimanale'], 2026, m)
+    with st.expander("Modifica Disponibilità"):
+        dr = st.date_input("Periodo:", value=[], min_value=datetime(2026,5,1), max_value=datetime(2026,9,30))
+        st_r = st.radio("Stato:", ["Disponibile", "NON Disponibile"])
+        if st.button("Salva"):
+            if len(dr) == 2:
+                d_list = [str(dr[0] + timedelta(days=x)) for x in range((dr[1]-dr[0]).days + 1)]
+                nuovi = pd.DataFrame([{"Nome": row['Nome'], "Cognome": row['Cognome'], "Data": d, "Stato": st_r} for d in d_list])
+                old = data["disp"][~((data["disp"]["Cognome"] == row['Cognome']) & (data["disp"]["Data"].isin(d_list)))]
+                conn.update(worksheet="Disponibilita", data=pd.concat([old, nuovi], ignore_index=True))
+                st.cache_data.clear()
+                st.rerun()
 
-# --- 3. PIANIFICA FABBISOGNO (VERSIONE ROBUSTA) ---
+# --- 3. PIANIFICA FABBISOGNO (CON COPIA MASSIVA A RANGE) ---
 elif menu == "⚙️ Pianifica Fabbisogno":
     st.header("Fabbisogno Staff")
-    t1, t2 = st.tabs(["Giorno Singolo", "Copia Massiva"])
+    t1, t2 = st.tabs(["Giorno Singolo", "Copia Massiva (Intervallo)"])
     
     with t1:
-        dt = st.date_input("Data da configurare:", datetime.now())
+        dt = st.date_input("Seleziona Giorno:", datetime.now())
         f_list = []
-        st.write(f"Imposta fabbisogno per il giorno: {dt}")
         for p in lista_postazioni:
-            # Cerchiamo se esiste già un valore per quel giorno/postazione per pre-compilare
             esistente = data["fabbisogno"][(data["fabbisogno"]["Data"] == str(dt)) & (data["fabbisogno"]["Mansione"] == p)]
-            val_default = int(esistente["Quantita"].iloc[0]) if not esistente.empty else 0
-            
-            v = st.number_input(f"Addetti per {p}:", min_value=0, value=val_default, key=f"sing_{p}")
+            val_def = int(esistente["Quantita"].iloc[0]) if not esistente.empty else 0
+            v = st.number_input(f"{p}:", min_value=0, value=val_def, key=f"s_{p}")
             f_list.append({"Data": str(dt), "Mansione": p, "Quantita": v})
-            
-        if st.button("Salva Fabbisogno Giorno Singolo"):
+        if st.button("Salva Giorno Singolo"):
             old = data["fabbisogno"][data["fabbisogno"]["Data"] != str(dt)]
-            nuovo_fabb = pd.concat([old, pd.DataFrame(f_list)], ignore_index=True)
-            conn.update(worksheet="Fabbisogno", data=nuovo_fabb)
+            conn.update(worksheet="Fabbisogno", data=pd.concat([old, pd.DataFrame(f_list)], ignore_index=True))
             st.cache_data.clear()
-            st.success(f"Fabbisogno per il {dt} salvato!")
             st.rerun()
 
     with t2:
-        st.subheader("Copia configurazione su più giorni")
-        src = st.date_input("1. Seleziona il giorno MODELLO (da dove copiare):", datetime.now() - timedelta(1))
-        
-        # Carichiamo i dati del modello per verifica
+        st.subheader("Copia da un giorno a un periodo intero")
+        src = st.date_input("1. Giorno MODELLO (da cui copiare):", datetime.now() - timedelta(1), key="src_copy")
         modello = data["fabbisogno"][data["fabbisogno"]["Data"] == str(src)]
         
         if modello.empty:
-            st.warning(f"⚠️ Il giorno {src} non ha un fabbisogno salvato. Configuralo prima nel tab 'Giorno Singolo'.")
+            st.warning(f"Il giorno {src} non ha dati. Configuralo prima.")
         else:
-            st.write(f"✅ Il modello del {src} contiene {len(modello)} postazioni configurate.")
-            dst = st.date_input("2. Seleziona i giorni di DESTINAZIONE:", value=None)
+            st.info(f"Modello del {src} pronto per la copia.")
+            dst_range = st.date_input("2. Seleziona Intervallo di DESTINAZIONE (Inizio e Fine):", value=[], key="dst_range")
             
-            # Nota: st.date_input con selezione multipla o range può essere insidioso
-            if st.button("Esegui Copia Massiva"):
-                if not dst:
-                    st.error("Seleziona almeno un giorno di destinazione!")
-                else:
-                    # Gestiamo sia se dst è una singola data, una lista o un range
-                    if isinstance(dst, list) or isinstance(dst, tuple):
-                        date_dest = [str(d) for d in dst]
-                    else:
-                        date_dest = [str(dst)]
+            if st.button("🚀 Esegui Copia su tutto il periodo"):
+                if len(dst_range) == 2:
+                    # Generiamo la lista di tutti i giorni tra inizio e fine
+                    start_d, end_d = dst_range[0], dst_range[1]
+                    delta = (end_d - start_d).days
+                    giorni_dest = [str(start_d + timedelta(days=i)) for i in range(delta + 1)]
                     
-                    new_rows = []
-                    for d in date_dest:
+                    nuove_righe = []
+                    for g in giorni_dest:
                         for _, r in modello.iterrows():
-                            new_rows.append({"Data": d, "Mansione": r["Mansione"], "Quantita": r["Quantita"]})
+                            nuove_righe.append({"Data": g, "Mansione": r["Mansione"], "Quantita": r["Quantita"]})
                     
-                    if new_rows:
-                        # Rimuoviamo i vecchi dati per le date di destinazione per evitare duplicati
-                        old = data["fabbisogno"][~data["fabbisogno"]["Data"].isin(date_dest)]
-                        nuovo_fabb = pd.concat([old, pd.DataFrame(new_rows)], ignore_index=True)
-                        conn.update(worksheet="Fabbisogno", data=nuovo_fabb)
-                        st.cache_data.clear()
-                        st.success(f"Copiato con successo su {len(date_dest)} giorni!")
-                        st.rerun()
+                    # Aggiorniamo il database
+                    old = data["fabbisogno"][~data["fabbisogno"]["Data"].isin(giorni_dest)]
+                    nuovo_fabb = pd.concat([old, pd.DataFrame(nuove_righe)], ignore_index=True)
+                    conn.update(worksheet="Fabbisogno", data=nuovo_fabb)
+                    st.cache_data.clear()
+                    st.success(f"Copia completata per {len(giorni_dest)} giorni!")
+                    st.rerun()
+                else:
+                    st.error("Seleziona sia la data di inizio che quella di fine nel calendario.")
 
-# --- 4. GESTIONE ANAGRAFICA (CON EDIT) ---
+# --- 4. GESTIONE ANAGRAFICA ---
 elif menu == "👥 Gestione Anagrafica":
     st.header("Anagrafica")
-    t_a, t_e = st.tabs(["➕ Aggiungi", "✏️ Modifica/Elimina"])
-    with t_a:
-        with st.form("add"):
+    ta, te = st.tabs(["➕ Aggiungi", "✏️ Modifica"])
+    with ta:
+        with st.form("a"):
             n, c = st.text_input("Nome"), st.text_input("Cognome")
             m, r = st.selectbox("Mansione", lista_postazioni), st.selectbox("Riposo", giorni_ita)
             if st.form_submit_button("Inserisci"):
@@ -226,47 +255,46 @@ elif menu == "👥 Gestione Anagrafica":
                 conn.update(worksheet="Addetti", data=pd.concat([data["addetti"], new], ignore_index=True))
                 st.cache_data.clear()
                 st.rerun()
-    with t_e:
+    with te:
         if not data["addetti"].empty:
             df_e = data["addetti"].copy()
             df_e['Full'] = df_e['Nome'] + " " + df_e['Cognome']
             sel = st.selectbox("Chi modificare?", df_e['Full'].tolist())
             row_e = df_e[df_e['Full'] == sel].iloc[0]
             idx = int(row_e.name)
-            with st.form("edit"):
+            with st.form("e"):
                 en, ec = st.text_input("Nome", row_e['Nome']), st.text_input("Cognome", row_e['Cognome'])
                 em = st.selectbox("Mansione", lista_postazioni, index=lista_postazioni.index(row_e['Mansione']) if row_e['Mansione'] in lista_postazioni else 0)
                 er = st.selectbox("Riposo", giorni_ita, index=giorni_ita.index(row_e['GiornoRiposoSettimanale']))
                 c1, c2 = st.columns(2)
-                if c1.form_submit_button("Salva Modifiche"):
+                if c1.form_submit_button("Salva"):
                     data["addetti"].loc[idx] = [en, ec, em, er]
                     conn.update(worksheet="Addetti", data=data["addetti"])
                     st.cache_data.clear()
                     st.rerun()
-                if c2.form_submit_button("Elimina Utente"):
+                if c2.form_submit_button("Elimina"):
                     conn.update(worksheet="Addetti", data=data["addetti"].drop(idx))
                     st.cache_data.clear()
                     st.rerun()
+    st.dataframe(data["addetti"], use_container_width=True)
 
 # --- 5. POSTAZIONI ---
 elif menu == "🚩 Gestione Postazioni":
     st.header("Postazioni")
-    np = st.text_input("Nome Postazione")
+    np = st.text_input("Nome")
     if st.button("Aggiungi"):
-        new_p = pd.DataFrame([{"Nome Postazione": np}])
-        conn.update(worksheet="Postazioni", data=pd.concat([data["postazioni"], new_p]))
+        conn.update(worksheet="Postazioni", data=pd.concat([data["postazioni"], pd.DataFrame([{"Nome Postazione": np}])], ignore_index=True))
         st.cache_data.clear()
         st.rerun()
     st.table(data["postazioni"])
 
 # --- 6. PASSWORD ---
 elif menu == "🔑 Gestione Password":
-    st.header("Cambio Password")
+    st.header("Password")
     conf_p = conn.read(worksheet="Config", ttl=0)
     with st.form("p"):
         ap = st.text_input("Admin", value=conf_p[conf_p["Ruolo"]=="Admin"]["Password"].values[0])
         up = st.text_input("User", value=conf_p[conf_p["Ruolo"]=="User"]["Password"].values[0])
         if st.form_submit_button("Aggiorna"):
-            new_c = pd.DataFrame([{"Ruolo": "Admin", "Password": ap}, {"Ruolo": "User", "Password": up}])
-            conn.update(worksheet="Config", data=new_c)
+            conn.update(worksheet="Config", data=pd.DataFrame([{"Ruolo":"Admin","Password":ap}, {"Ruolo":"User","Password":up}]))
             st.rerun()
