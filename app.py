@@ -89,7 +89,7 @@ def genera_mini_calendario(df_persona, riposo_fisso, anno, mese):
         html += '</tr>'
     st.markdown(html + '</table>', unsafe_allow_html=True)
 
-# --- SIDEBAR CON LOGO ---
+# --- SIDEBAR ---
 st.sidebar.image("https://www.caribebay.it/sites/default/files/caribebay-logo.png", width=200)
 st.sidebar.markdown("---")
 
@@ -116,11 +116,17 @@ if menu == "📊 Dashboard":
             g_sett = giorni_ita[curr_date.weekday()]
             fabb = data["fabbisogno"][data["fabbisogno"]["Data"].astype(str).str.contains(str(curr_date), na=False)]
             disp = data["disp"][data["disp"]["Data"].astype(str).str.contains(str(curr_date), na=False)]
+            
             staff = data["addetti"].copy()
             staff = staff[staff["GiornoRiposoSettimanale"] != g_sett]
+            
             if not disp.empty:
-                non_disp = disp[disp["Stato"].astype(str).str.contains("NON", case=False, na=False)]["Cognome"].tolist()
-                staff = staff[~staff["Cognome"].isin(non_disp)]
+                # CREAZIONE CHIAVE UNIVOCA PER FILTRO DISPONIBILITA
+                disp['Key'] = disp['Nome'] + " " + disp['Cognome']
+                non_disp_keys = disp[disp["Stato"].astype(str).str.contains("NON", case=False, na=False)]['Key'].tolist()
+                
+                staff['Key'] = staff['Nome'] + " " + staff['Cognome']
+                staff = staff[~staff['Key'].isin(non_disp_keys)]
             
             cols = st.columns(3)
             for i, post in enumerate(lista_postazioni):
@@ -136,7 +142,7 @@ if menu == "📊 Dashboard":
                             st.caption(f"• {r['Nome']} {r['Cognome']}")
             st.markdown("---")
 
-# --- 2. RIEPILOGO RIPOSI (ADATTIVO DARK/LIGHT) ---
+# --- 2. RIEPILOGO RIPOSI ---
 elif menu == "📅 Riepilogo Riposi Settimanali":
     st.header("Riepilogo Giorni di Riposo")
     if data["addetti"].empty:
@@ -148,50 +154,37 @@ elif menu == "📅 Riepilogo Riposi Settimanali":
                 c_rip = st.columns(7)
                 for i, g in enumerate(giorni_ita):
                     with c_rip[i]:
-                        # Intestazione giorno con colore adattivo
                         st.markdown(f"<div style='text-align:center; background:rgba(128,128,128,0.2); padding:5px; border-radius:5px; margin-bottom:12px;'><b>{g}</b></div>", unsafe_allow_html=True)
                         chi = add_m[add_m["GiornoRiposoSettimanale"] == g]
                         for _, r in chi.iterrows():
-                            # Box nomi con bordo sottile e testo dinamico
-                            st.markdown(f"""
-                                <div style='text-align: center; 
-                                background-color: rgba(31, 119, 180, 0.1); 
-                                padding: 10px 5px; border-radius: 5px; 
-                                margin-top: 8px; margin-bottom: 10px; 
-                                font-size: 14px; font-weight: 500; 
-                                border: 1px solid rgba(31, 119, 180, 0.3);'>
-                                    {r['Nome']} {r['Cognome']}
-                                </div>""", unsafe_allow_html=True)
+                            st.markdown(f"<div style='text-align: center; background-color: rgba(31, 119, 180, 0.1); padding: 10px 5px; border-radius: 5px; margin-top: 8px; margin-bottom: 10px; font-size: 14px; font-weight: 500; border: 1px solid rgba(31, 119, 180, 0.3);'>{r['Nome']} {r['Cognome']}</div>", unsafe_allow_html=True)
                 
                 non_def = add_m[add_m["GiornoRiposoSettimanale"] == "Non Definito"]
                 if not non_def.empty:
                     st.markdown("<div style='margin-top: 20px; border-top: 1px solid rgba(128,128,128,0.3); padding-top: 10px;'><b>Riposo Non Definito:</b></div>", unsafe_allow_html=True)
                     html_non_def = '<div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; margin-bottom: 20px;">'
                     for _, r in non_def.iterrows():
-                        nome_full = f"{r['Nome']} {r['Cognome']}"
-                        # Box arancione con colore testo ereditato (automatico bianco o nero)
-                        html_non_def += f"""
-                            <div style='border: 2px solid #ffa500; 
-                            padding: 6px 15px; border-radius: 8px; 
-                            font-weight: bold; background-color: rgba(255, 165, 0, 0.1); 
-                            display: inline-block; text-align: center; margin-bottom: 5px;'>
-                                {nome_full}
-                            </div>"""
+                        html_non_def += f"<div style='border: 2px solid #ffa500; padding: 6px 15px; border-radius: 8px; font-weight: bold; background-color: rgba(255, 165, 0, 0.1); display: inline-block; text-align: center; margin-bottom: 5px;'>{r['Nome']} {r['Cognome']}</div>"
                     html_non_def += '</div>'
                     st.markdown(html_non_def, unsafe_allow_html=True)
 
-# --- 3. AREA DISPONIBILITÀ (ADMIN) ---
+# --- 3. AREA DISPONIBILITÀ (RISOLTO OMONIMI) ---
 elif menu == "📅 Area Disponibilità Staff":
     st.header("Gestione Disponibilità")
     df_t = data["addetti"].copy()
     df_t['Full'] = df_t['Nome'] + " " + df_t['Cognome']
     sel_dip = st.selectbox("Seleziona dipendente:", df_t['Full'].tolist())
+    
+    # Identificazione precisa tramite Nome E Cognome
     row_d = df_t[df_t['Full'] == sel_dip].iloc[0]
-    df_p = data["disp"][data["disp"]["Cognome"] == row_d['Cognome']]
+    df_p = data["disp"][(data["disp"]["Nome"] == row_d['Nome']) & (data["disp"]["Cognome"] == row_d['Cognome'])]
+    
     st.markdown("""<div style='display: flex; gap: 15px; margin-bottom: 15px;'><div style='background:#ffa500; color:white; padding:5px 12px; border-radius:5px; font-size: 14px;'><b>🟠 Riposo Fisso</b></div><div style='background:#29b05c; color:white; padding:5px 12px; border-radius:5px; font-size: 14px;'><b>🟢 Disponibile</b></div><div style='background:#ff4b4b; color:white; padding:5px 12px; border-radius:5px; font-size: 14px;'><b>🔴 Non Disponibile</b></div></div>""", unsafe_allow_html=True)
+    
     c_cal = st.columns(5)
     for idx, m in enumerate([5, 6, 7, 8, 9]):
         with c_cal[idx]: genera_mini_calendario(df_p, row_d['GiornoRiposoSettimanale'], 2026, m)
+    
     with st.expander("Modifica Disponibilità"):
         dr = st.date_input("Periodo:", value=[], min_value=datetime(2026,5,1), max_value=datetime(2026,9,30))
         st_r = st.radio("Stato:", ["Disponibile", "NON Disponibile"])
@@ -199,12 +192,14 @@ elif menu == "📅 Area Disponibilità Staff":
             if len(dr) == 2:
                 d_list = [str(dr[0] + timedelta(days=x)) for x in range((dr[1]-dr[0]).days + 1)]
                 nuovi = pd.DataFrame([{"Nome": row_d['Nome'], "Cognome": row_d['Cognome'], "Data": d, "Stato": st_r} for d in d_list])
-                old = data["disp"][~((data["disp"]["Cognome"] == row_d['Cognome']) & (data["disp"]["Data"].astype(str).isin(d_list)))]
+                
+                # RIMOZIONE VECCHIE DATE FILTRANDO PER NOME E COGNOME
+                old = data["disp"][~((data["disp"]["Nome"] == row_d['Nome']) & (data["disp"]["Cognome"] == row_d['Cognome']) & (data["disp"]["Data"].astype(str).isin(d_list)))]
                 conn.update(worksheet="Disponibilita", data=pd.concat([old, nuovi], ignore_index=True))
                 st.cache_data.clear()
                 st.rerun()
 
-# --- 4. PIANIFICA FABBISOGNO (ADMIN) ---
+# --- 4. PIANIFICA FABBISOGNO ---
 elif menu == "⚙️ Pianifica Fabbisogno":
     st.header("Fabbisogno Staff")
     dt = st.date_input("Giorno:", datetime.now())
