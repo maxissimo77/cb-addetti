@@ -149,7 +149,7 @@ if menu == "📊 Dashboard":
                             st.caption(f"• {r['Nome']} {r['Cognome']}")
             st.markdown("---")
 
-# --- 2. RIEPILOGO RIPOSI ---
+# --- 2. RIEPILOGO RIPOSI (CORRETTO CON NON DEFINITI) ---
 elif menu == "📅 Riepilogo Riposi Settimanali":
     st.header("Riepilogo Giorni di Riposo")
     if data["addetti"].empty:
@@ -165,6 +165,16 @@ elif menu == "📅 Riepilogo Riposi Settimanali":
                         chi = add_m[add_m["GiornoRiposoSettimanale"] == g]
                         for _, r in chi.iterrows():
                             st.markdown(f"<div style='text-align: center; background-color: rgba(31, 119, 180, 0.1); padding: 10px 5px; border-radius: 5px; margin-top: 8px; margin-bottom: 10px; font-size: 14px; font-weight: 500; border: 1px solid rgba(31, 119, 180, 0.3);'>{r['Nome']} {r['Cognome']}</div>", unsafe_allow_html=True)
+                
+                # REINSERITO: Blocco per chi ha riposo "Non Definito"
+                non_def = add_m[add_m["GiornoRiposoSettimanale"] == "Non Definito"]
+                if not non_def.empty:
+                    st.markdown("<div style='margin-top: 20px; border-top: 1px solid rgba(128,128,128,0.3); padding-top: 10px;'><b>Riposo Non Definito:</b></div>", unsafe_allow_html=True)
+                    html_non_def = '<div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; margin-bottom: 20px;">'
+                    for _, r in non_def.iterrows():
+                        html_non_def += f"<div style='border: 2px solid #ffa500; padding: 6px 15px; border-radius: 8px; font-weight: bold; background-color: rgba(255, 165, 0, 0.1); display: inline-block; text-align: center; margin-bottom: 5px;'>{r['Nome']} {r['Cognome']}</div>"
+                    html_non_def += '</div>'
+                    st.markdown(html_non_def, unsafe_allow_html=True)
 
 # --- 3. GESTIONE RIPOSI RAPIDA ---
 elif menu == "📝 Gestione Riposi Rapida":
@@ -262,12 +272,10 @@ elif menu == "👥 Gestione Anagrafica":
             row_e = df_e[df_e['Full'] == sel].iloc[0]
             idx = int(row_e.name)
             
-            # --- SEZIONE CALENDARIO RIEPILOGATIVO IN MODIFICA ---
             st.markdown("### Riepilogo Disponibilità")
             df_p_edit = data["disp"][(data["disp"]["Nome"] == row_e['Nome']) & (data["disp"]["Cognome"] == row_e['Cognome'])]
             
             c_cal_edit = st.columns(5)
-            # Mostra Maggio, Giugno, Luglio, Agosto, Settembre
             for i_cal, m_cal in enumerate([5, 6, 7, 8, 9]):
                 with c_cal_edit[i_cal]:
                     genera_mini_calendario(df_p_edit, row_e['GiornoRiposoSettimanale'], 2026, m_cal)
