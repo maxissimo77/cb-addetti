@@ -168,32 +168,26 @@ elif menu == "📅 Riepilogo Riposi Settimanali":
                                 </div>
                             """, unsafe_allow_html=True)
                 
-                # 2. Sezione Non Definiti (Box Arancioni)
-                non_def = add_m[add_m["GiornoRiposoSettimanale"] == "Non Definito"]
+                # 2. Sezione Non Definiti (Sostituisci da qui in poi)
+            non_def = add_m[add_m["GiornoRiposoSettimanale"] == "Non Definito"]
+            
+            if not non_def.empty:
+                st.markdown("<br><hr>", unsafe_allow_html=True) 
+                st.markdown("**🔔 Riposo Non Definito:**")
                 
-                if not non_def.empty:
-                    st.markdown("<br><hr>", unsafe_allow_html=True) 
-                    st.markdown("**🔔 Riposo Non Definito:**")
-                    
-                    html_non_def = '<div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px;">'
-                    for _, r in non_def.iterrows():
-                        nome_completo = f"{r['Nome']} {r['Cognome']}"
-                        html_non_def += f"""
-                            <div style='
-                                border: 2px solid #ffa500; 
-                                color: #ffa500; 
-                                padding: 5px 12px; 
-                                border-radius: 8px; 
-                                font-weight: bold; 
-                                background-color: white; 
-                                display: inline-block;
-                                text-align: center;
-                            '>
-                                {nome_completo}
-                            </div>
-                        """
-                    html_non_def += '</div>'
-                    st.markdown(html_non_def, unsafe_allow_html=True)
+                # Iniziamo la stringa contenitore
+                html_codice = '<div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px;">'
+                
+                for _, r in non_def.iterrows():
+                    nome_box = f"{r['Nome']} {r['Cognome']}"
+                    # Aggiungiamo ogni singolo box alla stringa
+                    html_codice += f'<div style="border: 2px solid #ffa500; color: #ffa500; padding: 5px 12px; border-radius: 8px; font-weight: bold; background-color: white; display: inline-block; text-align: center;">{nome_box}</div>'
+                
+                # Chiudiamo il div contenitore
+                html_codice += '</div>'
+                
+                # Stampiamo tutto in un colpo solo
+                st.markdown(html_codice, unsafe_allow_html=True)
 
 # --- 3. AREA DISPONIBILITÀ (ADMIN) ---
 elif menu == "📅 Area Disponibilità Staff":
