@@ -166,7 +166,7 @@ elif menu == "📅 Riepilogo Riposi Settimanali":
                     html_non_def += '</div>'
                     st.markdown(html_non_def, unsafe_allow_html=True)
 
-# --- 3. GESTIONE RIPOSI RAPIDA (CON CONTEGGI) ---
+# --- 3. GESTIONE RIPOSI RAPIDA (CON CONTEGGI IN ALTO) ---
 elif menu == "📝 Gestione Riposi Rapida":
     st.header("Gestione Rapida Riposi")
     if data["addetti"].empty:
@@ -179,7 +179,22 @@ elif menu == "📝 Gestione Riposi Rapida":
             if not add_m.empty:
                 st.subheader(f"📍 {m}")
                 
-                # Visualizzazione addetti
+                # --- CALCOLO E VISUALIZZAZIONE TOTALI (ORA IN ALTO) ---
+                st.markdown(f"<div style='margin-bottom:5px; font-size: 0.9em; color: gray;'>Riepilogo riposi attuali per {m}:</div>", unsafe_allow_html=True)
+                conteggi = df_mod[df_mod["Mansione"] == m]["GiornoRiposoSettimanale"].value_counts()
+                
+                cols_count = st.columns(len(giorni_ita))
+                for i, g in enumerate(giorni_ita):
+                    n_rip = conteggi.get(g, 0)
+                    with cols_count[i]:
+                        st.markdown(f"""
+                            <div style='text-align:center; border: 1px solid rgba(128,128,128,0.2); border-radius:5px; padding:5px; margin-bottom:15px;'>
+                                <small>{g[:3]}</small><br>
+                                <b style='color: {"#ffa500" if n_rip > 0 else "inherit"};'>{n_rip}</b>
+                            </div>
+                        """, unsafe_allow_html=True)
+                
+                # Visualizzazione addetti sotto i conteggi
                 for idx, row in add_m.iterrows():
                     c1, c2 = st.columns([2, 2])
                     with c1:
@@ -194,22 +209,6 @@ elif menu == "📝 Gestione Riposi Rapida":
                             key=f"rip_rap_{idx}", label_visibility="collapsed"
                         )
                         df_mod.at[idx, 'GiornoRiposoSettimanale'] = nuovo_rip
-                
-                # --- CALCOLO E VISUALIZZAZIONE TOTALI PER MANSIONE ---
-                st.markdown(f"<div style='margin-top:10px; font-size: 0.9em; color: gray;'>Totale riposi previsti per {m}:</div>", unsafe_allow_html=True)
-                conteggi = df_mod[df_mod["Mansione"] == m]["GiornoRiposoSettimanale"].value_counts()
-                
-                cols_count = st.columns(len(giorni_ita))
-                for i, g in enumerate(giorni_ita):
-                    n_rip = conteggi.get(g, 0)
-                    with cols_count[i]:
-                        # Colore diverso se il numero è alto (opzionale, qui semplice)
-                        st.markdown(f"""
-                            <div style='text-align:center; border: 1px solid rgba(128,128,128,0.2); border-radius:5px; padding:5px;'>
-                                <small>{g[:3]}</small><br>
-                                <b style='color: {"#ffa500" if n_rip > 0 else "inherit"};'>{n_rip}</b>
-                            </div>
-                        """, unsafe_allow_html=True)
                 
                 st.markdown("---")
         
