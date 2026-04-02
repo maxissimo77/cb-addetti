@@ -132,6 +132,7 @@ elif menu == "📅 Riepilogo Riposi Settimanali":
         with st.expander(f"📍 {m}", expanded=True):
             add_m = data["addetti"][data["addetti"]["Mansione"] == m]
             
+            # 1. Griglia giorni normali
             c_rip = st.columns(7)
             for i, g in enumerate(giorni_ita):
                 with c_rip[i]:
@@ -140,19 +141,18 @@ elif menu == "📅 Riepilogo Riposi Settimanali":
                     for _, r in chi.iterrows():
                         st.info(f"{r['Nome']} {r['Cognome']}")
             
-            # Sezione Non Definiti (Box Arancioni)
+            # 2. Sezione Non Definiti (I BOX ARANCIONI)
             non_def = add_m[add_m["GiornoRiposoSettimanale"] == "Non Definito"]
             if not non_def.empty:
-                st.markdown("<br>", unsafe_allow_html=True)
+                st.markdown("---") # Riga di separazione
                 st.markdown("**🔔 Riposo Non Definito:**")
-                html_non_def = '<div style="display: flex; flex-wrap: wrap; gap: 10px;">'
+                
+                # Costruiamo la stringa HTML
+                html_codice = '<div style="display: flex; flex-wrap: wrap; gap: 10px;">'
                 for _, r in non_def.iterrows():
-                    html_non_def += f"""
-                        <div style="border: 2px solid #ffa500; color: #ffa500; padding: 5px 12px; border-radius: 8px; font-weight: bold; background-color: white; display: inline-block;">
-                            {r['Nome']} {r['Cognome']}
-                        </div>
-                    """
-                html_non_def += '</div>'
+                    nome_completo = f"{r['Nome']} {r['Cognome']}"
+                    html_codice += f'<div style="border: 2px solid #ffa500; color: #ffa500; padding: 5px 12px; border-radius: 8px; font-weight: bold; background-color: white; display: inline-block;">{nome_completo}</div>'
+                html_codice += '</div>'
                 st.markdown(html_non_def, unsafe_allow_html=True)
 
 # --- 3. AREA DISPONIBILITÀ (ADMIN) ---
