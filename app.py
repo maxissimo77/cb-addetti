@@ -70,22 +70,22 @@ def genera_mini_calendario(df_persona, riposo_fisso, anno, mese):
     idx_riposo = mappa_giorni.get(riposo_fisso, -1)
     cal = calendar.monthcalendar(anno, mese)
     html = '<table style="width:100%; border-collapse: collapse; text-align: center; font-size: 12px; table-layout: fixed; border: 1px solid #ddd;">'
-    html += '<tr style="background:#f0f2f6;"><th>L</th><th>M</th><th>M</th><th>G</th><th>V</th><th>S</th><th>D</th></tr>'
+    html += '<tr style="background:rgba(128,128,128,0.1);"><th>L</th><th>M</th><th>M</th><th>G</th><th>V</th><th>S</th><th>D</th></tr>'
     for week in cal:
         html += '<tr style="height: 35px;">'
         for i, day in enumerate(week):
             if day == 0: 
-                html += '<td style="border:1px solid #eee; background: #fafafa;"></td>'
+                html += '<td style="border:1px solid rgba(128,128,128,0.1);"></td>'
             else:
                 d_str = f"{anno}-{mese:02d}-{day:02d}"
                 stato_serie = df_persona[df_persona["Data"].astype(str).str.contains(d_str, na=False)]["Stato"]
-                bg, tx = "white", "#333"
+                bg, tx = "transparent", "inherit"
                 if i == idx_riposo: 
                     bg, tx = "#ffa500", "white"
                 elif not stato_serie.empty:
                     bg = "#29b05c" if "NON" not in str(stato_serie.values[0]).upper() else "#ff4b4b"
                     tx = "white"
-                html += f'<td style="background:{bg}; color:{tx}; border:1px solid #ddd; font-weight:bold;">{day}</td>'
+                html += f'<td style="background:{bg}; color:{tx}; border:1px solid rgba(128,128,128,0.2); font-weight:bold;">{day}</td>'
         html += '</tr>'
     st.markdown(html + '</table>', unsafe_allow_html=True)
 
@@ -136,7 +136,7 @@ if menu == "📊 Dashboard":
                             st.caption(f"• {r['Nome']} {r['Cognome']}")
             st.markdown("---")
 
-# --- 2. RIEPILOGO RIPOSI ---
+# --- 2. RIEPILOGO RIPOSI (ADATTIVO DARK/LIGHT) ---
 elif menu == "📅 Riepilogo Riposi Settimanali":
     st.header("Riepilogo Giorni di Riposo")
     if data["addetti"].empty:
@@ -148,18 +148,35 @@ elif menu == "📅 Riepilogo Riposi Settimanali":
                 c_rip = st.columns(7)
                 for i, g in enumerate(giorni_ita):
                     with c_rip[i]:
-                        st.markdown(f"<div style='text-align:center; background:#eee; padding:5px; border-radius:5px; margin-bottom:12px;'><b>{g}</b></div>", unsafe_allow_html=True)
+                        # Intestazione giorno con colore adattivo
+                        st.markdown(f"<div style='text-align:center; background:rgba(128,128,128,0.2); padding:5px; border-radius:5px; margin-bottom:12px;'><b>{g}</b></div>", unsafe_allow_html=True)
                         chi = add_m[add_m["GiornoRiposoSettimanale"] == g]
                         for _, r in chi.iterrows():
-                            st.markdown(f"<div style='text-align: center; background-color: #e7f4fb; color: #035e8b; padding: 10px 5px; border-radius: 5px; margin-top: 8px; margin-bottom: 10px; font-size: 14px; font-weight: 500; border: 1px solid #c2e5f2;'>{r['Nome']} {r['Cognome']}</div>", unsafe_allow_html=True)
+                            # Box nomi con bordo sottile e testo dinamico
+                            st.markdown(f"""
+                                <div style='text-align: center; 
+                                background-color: rgba(31, 119, 180, 0.1); 
+                                padding: 10px 5px; border-radius: 5px; 
+                                margin-top: 8px; margin-bottom: 10px; 
+                                font-size: 14px; font-weight: 500; 
+                                border: 1px solid rgba(31, 119, 180, 0.3);'>
+                                    {r['Nome']} {r['Cognome']}
+                                </div>""", unsafe_allow_html=True)
                 
                 non_def = add_m[add_m["GiornoRiposoSettimanale"] == "Non Definito"]
                 if not non_def.empty:
-                    st.markdown("<div style='margin-top: 20px; border-top: 1px solid #ddd; padding-top: 10px;'><b>Riposo Non Definito:</b></div>", unsafe_allow_html=True)
+                    st.markdown("<div style='margin-top: 20px; border-top: 1px solid rgba(128,128,128,0.3); padding-top: 10px;'><b>Riposo Non Definito:</b></div>", unsafe_allow_html=True)
                     html_non_def = '<div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; margin-bottom: 20px;">'
                     for _, r in non_def.iterrows():
                         nome_full = f"{r['Nome']} {r['Cognome']}"
-                        html_non_def += f'<div style="border: 2px solid #ffa500; color: #ffa500; padding: 6px 15px; border-radius: 8px; font-weight: bold; background-color: white; display: inline-block; text-align: center; margin-bottom: 5px;">{nome_full}</div>'
+                        # Box arancione con colore testo ereditato (automatico bianco o nero)
+                        html_non_def += f"""
+                            <div style='border: 2px solid #ffa500; 
+                            padding: 6px 15px; border-radius: 8px; 
+                            font-weight: bold; background-color: rgba(255, 165, 0, 0.1); 
+                            display: inline-block; text-align: center; margin-bottom: 5px;'>
+                                {nome_full}
+                            </div>"""
                     html_non_def += '</div>'
                     st.markdown(html_non_def, unsafe_allow_html=True)
 
