@@ -1,3 +1,10 @@
+Ottima scelta, il logo di Caribe Bay ha uno stile tropicale che si sposa perfettamente con l'interfaccia.
+
+Ho aggiornato il codice inserendo il logo in alto nella sidebar, così rimarrà sempre visibile come punto di riferimento del brand mentre navighi tra le diverse sezioni. Ho anche aggiunto un piccolo tocco di stile per assicurarmi che non sia troppo grande.
+
+Ecco il codice completo e definitivo:
+
+Python
 import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
@@ -85,7 +92,10 @@ def genera_mini_calendario(df_persona, riposo_fisso, anno, mese):
         html += '</tr>'
     st.markdown(html + '</table>', unsafe_allow_html=True)
 
-# --- SIDEBAR ---
+# --- SIDEBAR CON LOGO ---
+st.sidebar.image("https://www.caribebay.it/sites/default/files/caribebay-logo.png", width=200)
+st.sidebar.markdown("---")
+
 menu_options = ["📊 Dashboard", "📅 Riepilogo Riposi Settimanali"]
 if st.session_state["role"] == "Admin":
     menu_options += ["📅 Area Disponibilità Staff", "⚙️ Pianifica Fabbisogno", "👥 Gestione Anagrafica", "🚩 Gestione Postazioni", "🔑 Gestione Password"]
@@ -95,14 +105,10 @@ if st.sidebar.button("Logout"):
     del st.session_state["role"]
     st.rerun()
 
-# --- 1. DASHBOARD DINAMICA ---
+# --- 1. DASHBOARD ---
 if menu == "📊 Dashboard":
     st.header("Dashboard")
-    
-    # Selettore Data di Partenza
     data_inizio = st.date_input("Visualizza a partire dal giorno:", datetime.now())
-    
-    # Generazione range di 7 giorni basato sulla selezione
     date_range = [data_inizio + timedelta(days=i) for i in range(7)]
     nomi_tab = [d.strftime("%d/%m") + f" ({giorni_ita[d.weekday()]})" for d in date_range]
     tabs = st.tabs(nomi_tab)
@@ -111,16 +117,10 @@ if menu == "📊 Dashboard":
         with t:
             curr_date = date_range[idx]
             g_sett = giorni_ita[curr_date.weekday()]
-            
-            # Filtro Fabbisogno e Disponibilità
             fabb = data["fabbisogno"][data["fabbisogno"]["Data"].astype(str).str.contains(str(curr_date), na=False)]
             disp = data["disp"][data["disp"]["Data"].astype(str).str.contains(str(curr_date), na=False)]
             staff = data["addetti"].copy()
-            
-            # Escludi chi ha il riposo fisso
             staff = staff[staff["GiornoRiposoSettimanale"] != g_sett]
-            
-            # Escludi chi ha segnato "NON Disponibile"
             if not disp.empty:
                 non_disp = disp[disp["Stato"].astype(str).str.contains("NON", case=False, na=False)]["Cognome"].tolist()
                 staff = staff[~staff["Cognome"].isin(non_disp)]
@@ -130,7 +130,6 @@ if menu == "📊 Dashboard":
                 presenti = staff[staff["Mansione"] == post]
                 f_row = fabb[fabb["Mansione"] == post]
                 req = int(f_row["Quantita"].iloc[0]) if not f_row.empty else 0
-                
                 with cols[i % 3]:
                     st.metric(post, f"{len(presenti)}/{req}", delta=len(presenti)-req)
                     if presenti.empty:
@@ -140,7 +139,7 @@ if menu == "📊 Dashboard":
                             st.caption(f"• {r['Nome']} {r['Cognome']}")
             st.markdown("---")
 
-# --- 2. RIEPILOGO RIPOSI SETTIMANALI ---
+# --- 2. RIEPILOGO RIPOSI ---
 elif menu == "📅 Riepilogo Riposi Settimanali":
     st.header("Riepilogo Giorni di Riposo")
     if data["addetti"].empty:
