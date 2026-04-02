@@ -1,3 +1,8 @@
+Ho aggiornato la configurazione della pagina per riflettere il nuovo nome "Caribe Bay - Staff" e ho puntato la favicon direttamente all'icona ufficiale del sito Caribe Bay.
+
+Ecco il codice completo aggiornato:
+
+Python
 import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
@@ -5,7 +10,11 @@ from datetime import datetime, timedelta
 import calendar
 
 # --- CONFIGURAZIONE PAGINA ---
-st.set_page_config(page_title="WaterPark Manager 2026", layout="wide", page_icon="🌊")
+st.set_page_config(
+    page_title="Caribe Bay - Staff", 
+    layout="wide", 
+    page_icon="https://www.caribebay.it/favicon.ico"
+)
 pd.options.mode.string_storage = "python"
 
 # --- CONNESSIONE ---
@@ -14,7 +23,7 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 # --- SISTEMA DI LOGIN ---
 def check_password():
     if "role" not in st.session_state:
-        st.title("🌊 WaterPark Staff Login")
+        st.title("🌊 Caribe Bay - Staff Login")
         pwd_input = st.text_input("Inserisci Password", type="password")
         
         if st.button("Accedi"):
