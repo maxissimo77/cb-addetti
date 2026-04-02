@@ -140,30 +140,59 @@ elif menu == "📅 Riepilogo Riposi Settimanali":
                 c_rip = st.columns(7)
                 for i, g in enumerate(giorni_ita):
                     with c_rip[i]:
-                        st.markdown(f"<div style='text-align:center; background:#eee; padding:5px; border-radius:5px;'><b>{g}</b></div>", unsafe_allow_html=True)
+                        # Intestazione Giorno
+                        st.markdown(f"""
+                            <div style='text-align:center; background:#eee; padding:5px; border-radius:5px; margin-bottom:10px;'>
+                                <b>{g}</b>
+                            </div>
+                        """, unsafe_allow_html=True)
+                        
+                        # Filtro addetti per quel giorno
                         chi = add_m[add_m["GiornoRiposoSettimanale"] == g]
+                        
                         for _, r in chi.iterrows():
-                            st.info(f"{r['Nome']} {r['Cognome']}")
+                            # BOX NOME: Centrato, staccato dal giorno e con sfondo azzurro
+                            st.markdown(f"""
+                                <div style='
+                                    text-align: center; 
+                                    background-color: #e7f4fb; 
+                                    color: #035e8b; 
+                                    padding: 8px 5px; 
+                                    border-radius: 5px; 
+                                    margin-top: 8px; 
+                                    font-size: 14px; 
+                                    font-weight: 500;
+                                    border: 1px solid #c2e5f2;
+                                '>
+                                    {r['Nome']} {r['Cognome']}
+                                </div>
+                            """, unsafe_allow_html=True)
                 
-                # 2. Sezione Non Definiti (I BOX ARANCIONI)
+                # 2. Sezione Non Definiti (Box Arancioni)
                 non_def = add_m[add_m["GiornoRiposoSettimanale"] == "Non Definito"]
                 
-                # Inizializziamo sempre la variabile per evitare il NameError
-                html_non_def = "" 
-                
                 if not non_def.empty:
-                    st.markdown("---") 
+                    st.markdown("<br><hr>", unsafe_allow_html=True) 
                     st.markdown("**🔔 Riposo Non Definito:**")
                     
-                    # Costruiamo il contenitore Flex
                     html_non_def = '<div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px;">'
                     for _, r in non_def.iterrows():
                         nome_completo = f"{r['Nome']} {r['Cognome']}"
-                        # Inseriamo il box arancione
-                        html_non_def += f'<div style="border: 2px solid #ffa500; color: #ffa500; padding: 5px 12px; border-radius: 8px; font-weight: bold; background-color: white; display: inline-block;">{nome_completo}</div>'
+                        html_non_def += f"""
+                            <div style='
+                                border: 2px solid #ffa500; 
+                                color: #ffa500; 
+                                padding: 5px 12px; 
+                                border-radius: 8px; 
+                                font-weight: bold; 
+                                background-color: white; 
+                                display: inline-block;
+                                text-align: center;
+                            '>
+                                {nome_completo}
+                            </div>
+                        """
                     html_non_def += '</div>'
-                    
-                    # Stampiamo l'HTML solo se è stato costruito
                     st.markdown(html_non_def, unsafe_allow_html=True)
 
 # --- 3. AREA DISPONIBILITÀ (ADMIN) ---
