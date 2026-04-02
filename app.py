@@ -1,8 +1,3 @@
-Ho aggiornato la configurazione della pagina per riflettere il nuovo nome "Caribe Bay - Staff" e ho puntato la favicon direttamente all'icona ufficiale del sito Caribe Bay.
-
-Ecco il codice completo aggiornato:
-
-Python
 import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
