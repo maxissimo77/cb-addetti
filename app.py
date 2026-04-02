@@ -95,7 +95,7 @@ st.sidebar.markdown("---")
 
 menu_options = ["📊 Dashboard", "📅 Riepilogo Riposi Settimanali"]
 if st.session_state["role"] == "Admin":
-    menu_options += ["📅 Area Disponibilità Staff", "⚙️ Pianifica Fabbisogno", "👥 Gestione Anagrafica", "🚩 Gestione Postazioni", "🔑 Gestione Password"]
+    menu_options += ["📝 Gestione Riposi Rapida", "📅 Area Disponibilità Staff", "⚙️ Pianifica Fabbisogno", "👥 Gestione Anagrafica", "🚩 Gestione Postazioni", "🔑 Gestione Password"]
 
 menu = st.sidebar.radio("Vai a:", menu_options)
 if st.sidebar.button("Logout"):
@@ -121,10 +121,8 @@ if menu == "📊 Dashboard":
             staff = staff[staff["GiornoRiposoSettimanale"] != g_sett]
             
             if not disp.empty:
-                # CREAZIONE CHIAVE UNIVOCA PER FILTRO DISPONIBILITA
                 disp['Key'] = disp['Nome'] + " " + disp['Cognome']
                 non_disp_keys = disp[disp["Stato"].astype(str).str.contains("NON", case=False, na=False)]['Key'].tolist()
-                
                 staff['Key'] = staff['Nome'] + " " + staff['Cognome']
                 staff = staff[~staff['Key'].isin(non_disp_keys)]
             
@@ -158,24 +156,62 @@ elif menu == "📅 Riepilogo Riposi Settimanali":
                         chi = add_m[add_m["GiornoRiposoSettimanale"] == g]
                         for _, r in chi.iterrows():
                             st.markdown(f"<div style='text-align: center; background-color: rgba(31, 119, 180, 0.1); padding: 10px 5px; border-radius: 5px; margin-top: 8px; margin-bottom: 10px; font-size: 14px; font-weight: 500; border: 1px solid rgba(31, 119, 180, 0.3);'>{r['Nome']} {r['Cognome']}</div>", unsafe_allow_html=True)
-                
-                non_def = add_m[add_m["GiornoRiposoSettimanale"] == "Non Definito"]
-                if not non_def.empty:
-                    st.markdown("<div style='margin-top: 20px; border-top: 1px solid rgba(128,128,128,0.3); padding-top: 10px;'><b>Riposo Non Definito:</b></div>", unsafe_allow_html=True)
-                    html_non_def = '<div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; margin-bottom: 20px;">'
-                    for _, r in non_def.iterrows():
-                        html_non_def += f"<div style='border: 2px solid #ffa500; padding: 6px 15px; border-radius: 8px; font-weight: bold; background-color: rgba(255, 165, 0, 0.1); display: inline-block; text-align: center; margin-bottom: 5px;'>{r['Nome']} {r['Cognome']}</div>"
-                    html_non_def += '</div>'
-                    st.markdown(html_non_def, unsafe_allow_html=True)
 
-# --- 3. AREA DISPONIBILITÀ (RISOLTO OMONIMI) ---
+# --- 3. GESTIONE RIPOSI RAPIDA (ADMIN) ---
+elif menu == "📝 Gestione Riposi Rapida":
+    st.header("Gestione Rapida Riposi")
+    st.info("Modifica i giorni di riposo direttamente da qui e clicca 'Salva Modifiche' a fondo pagina.")
+    
+    if data["addetti"].empty:
+        st.warning("Nessun addetto in anagrafica.")
+    else:
+        # Creiamo una copia per le modifiche
+        df_mod = data["addetti"].copy()
+        cambiamenti = False
+        
+        for m in lista_postazioni:
+            add_m = df_mod[df_mod["Mansione"] == m]
+            if not add_m.empty:
+                st.subheader(f"📍 {m}")
+                # Creazione tabella per mansione
+                for idx, row in add_m.iterrows():
+                    c1, c2 = st.columns([2, 2])
+                    with c1:
+                        st.write(f"**{row['Nome']} {row['Cognome']}**")
+                    with c2:
+                        # Trova l'indice attuale del riposo
+                        current_rip = row['GiornoRiposoSettimanale']
+                        try:
+                            idx_init = opzioni_riposo.index(current_rip)
+                        except:
+                            idx_init = len(opzioni_riposo) - 1
+                        
+                        nuovo_rip = st.selectbox(
+                            f"Riposo per {row['Nome']}", 
+                            opzioni_riposo, 
+                            index=idx_init, 
+                            key=f"rip_rap_{idx}",
+                            label_visibility="collapsed"
+                        )
+                        
+                        if nuovo_rip != current_rip:
+                            df_mod.at[idx, 'GiornoRiposoSettimanale'] = nuovo_rip
+                            cambiamenti = True
+                st.markdown("---")
+        
+        if cambiamenti:
+            if st.button("💾 Salva Tutte le Modifiche", type="primary"):
+                conn.update(worksheet="Addetti", data=df_mod)
+                st.cache_data.clear()
+                st.success("Modifiche salvate con successo!")
+                st.rerun()
+
+# --- 4. AREA DISPONIBILITÀ ---
 elif menu == "📅 Area Disponibilità Staff":
     st.header("Gestione Disponibilità")
     df_t = data["addetti"].copy()
     df_t['Full'] = df_t['Nome'] + " " + df_t['Cognome']
     sel_dip = st.selectbox("Seleziona dipendente:", df_t['Full'].tolist())
-    
-    # Identificazione precisa tramite Nome E Cognome
     row_d = df_t[df_t['Full'] == sel_dip].iloc[0]
     df_p = data["disp"][(data["disp"]["Nome"] == row_d['Nome']) & (data["disp"]["Cognome"] == row_d['Cognome'])]
     
@@ -192,14 +228,12 @@ elif menu == "📅 Area Disponibilità Staff":
             if len(dr) == 2:
                 d_list = [str(dr[0] + timedelta(days=x)) for x in range((dr[1]-dr[0]).days + 1)]
                 nuovi = pd.DataFrame([{"Nome": row_d['Nome'], "Cognome": row_d['Cognome'], "Data": d, "Stato": st_r} for d in d_list])
-                
-                # RIMOZIONE VECCHIE DATE FILTRANDO PER NOME E COGNOME
                 old = data["disp"][~((data["disp"]["Nome"] == row_d['Nome']) & (data["disp"]["Cognome"] == row_d['Cognome']) & (data["disp"]["Data"].astype(str).isin(d_list)))]
                 conn.update(worksheet="Disponibilita", data=pd.concat([old, nuovi], ignore_index=True))
                 st.cache_data.clear()
                 st.rerun()
 
-# --- 4. PIANIFICA FABBISOGNO ---
+# --- 5. PIANIFICA FABBISOGNO ---
 elif menu == "⚙️ Pianifica Fabbisogno":
     st.header("Fabbisogno Staff")
     dt = st.date_input("Giorno:", datetime.now())
@@ -215,7 +249,7 @@ elif menu == "⚙️ Pianifica Fabbisogno":
         st.cache_data.clear()
         st.rerun()
 
-# --- 5. GESTIONE ANAGRAFICA ---
+# --- 6. GESTIONE ANAGRAFICA ---
 elif menu == "👥 Gestione Anagrafica":
     st.header("Anagrafica Staff")
     ta, te = st.tabs(["➕ Aggiungi", "✏️ Modifica/Elimina"])
@@ -252,7 +286,7 @@ elif menu == "👥 Gestione Anagrafica":
                     st.cache_data.clear()
                     st.rerun()
 
-# --- 6. POSTAZIONI ---
+# --- 7. POSTAZIONI ---
 elif menu == "🚩 Gestione Postazioni":
     st.header("Postazioni Parco")
     np = st.text_input("Nome Nuova Postazione")
@@ -262,7 +296,7 @@ elif menu == "🚩 Gestione Postazioni":
         st.rerun()
     st.table(data["postazioni"])
 
-# --- 7. PASSWORD ---
+# --- 8. PASSWORD ---
 elif menu == "🔑 Gestione Password":
     st.header("Cambio Password")
     conf_p = conn.read(worksheet="Config", ttl=0)
