@@ -78,7 +78,7 @@ def genera_mini_calendario(df_persona, riposo_fisso, anno, mese):
                 html += '<td style="border:1px solid rgba(128,128,128,0.1);"></td>'
             else:
                 d_str = f"{anno}-{mese:02d}-{day:02d}"
-                stato_serie = df_persona[df_persona["Data"].astype(str).str.contains(d_str, na=False)]["Stato"]
+                stato_serie = df_persona[(df_persona["Data"].astype(str).str.contains(d_str, na=False))]["Stato"]
                 bg, tx = "transparent", "inherit"
                 if i == idx_riposo: 
                     bg, tx = "#ffa500", "white"
@@ -156,55 +156,51 @@ elif menu == "📅 Riepilogo Riposi Settimanali":
                         chi = add_m[add_m["GiornoRiposoSettimanale"] == g]
                         for _, r in chi.iterrows():
                             st.markdown(f"<div style='text-align: center; background-color: rgba(31, 119, 180, 0.1); padding: 10px 5px; border-radius: 5px; margin-top: 8px; margin-bottom: 10px; font-size: 14px; font-weight: 500; border: 1px solid rgba(31, 119, 180, 0.3);'>{r['Nome']} {r['Cognome']}</div>", unsafe_allow_html=True)
+                
+                # --- BLOCCO RIPRISTINATO: NON DEFINITI ---
+                non_def = add_m[add_m["GiornoRiposoSettimanale"] == "Non Definito"]
+                if not non_def.empty:
+                    st.markdown("<div style='margin-top: 20px; border-top: 1px solid rgba(128,128,128,0.3); padding-top: 10px;'><b>Riposo Non Definito:</b></div>", unsafe_allow_html=True)
+                    html_non_def = '<div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; margin-bottom: 20px;">'
+                    for _, r in non_def.iterrows():
+                        html_non_def += f"<div style='border: 2px solid #ffa500; padding: 6px 15px; border-radius: 8px; font-weight: bold; background-color: rgba(255, 165, 0, 0.1); display: inline-block; text-align: center; margin-bottom: 5px;'>{r['Nome']} {r['Cognome']}</div>"
+                    html_non_def += '</div>'
+                    st.markdown(html_non_def, unsafe_allow_html=True)
 
 # --- 3. GESTIONE RIPOSI RAPIDA (ADMIN) ---
 elif menu == "📝 Gestione Riposi Rapida":
     st.header("Gestione Rapida Riposi")
-    st.info("Modifica i giorni di riposo direttamente da qui e clicca 'Salva Modifiche' a fondo pagina.")
-    
     if data["addetti"].empty:
         st.warning("Nessun addetto in anagrafica.")
     else:
-        # Creiamo una copia per le modifiche
         df_mod = data["addetti"].copy()
-        cambiamenti = False
         
+        # Monitoraggio cambiamenti tramite session_state per evitare refresh continui
         for m in lista_postazioni:
             add_m = df_mod[df_mod["Mansione"] == m]
             if not add_m.empty:
                 st.subheader(f"📍 {m}")
-                # Creazione tabella per mansione
                 for idx, row in add_m.iterrows():
                     c1, c2 = st.columns([2, 2])
                     with c1:
                         st.write(f"**{row['Nome']} {row['Cognome']}**")
                     with c2:
-                        # Trova l'indice attuale del riposo
                         current_rip = row['GiornoRiposoSettimanale']
-                        try:
-                            idx_init = opzioni_riposo.index(current_rip)
-                        except:
-                            idx_init = len(opzioni_riposo) - 1
+                        try: idx_init = opzioni_riposo.index(current_rip)
+                        except: idx_init = len(opzioni_riposo) - 1
                         
                         nuovo_rip = st.selectbox(
-                            f"Riposo per {row['Nome']}", 
-                            opzioni_riposo, 
-                            index=idx_init, 
-                            key=f"rip_rap_{idx}",
-                            label_visibility="collapsed"
+                            f"Riposo per {idx}", opzioni_riposo, index=idx_init, 
+                            key=f"rip_rap_{idx}", label_visibility="collapsed"
                         )
-                        
-                        if nuovo_rip != current_rip:
-                            df_mod.at[idx, 'GiornoRiposoSettimanale'] = nuovo_rip
-                            cambiamenti = True
+                        df_mod.at[idx, 'GiornoRiposoSettimanale'] = nuovo_rip
                 st.markdown("---")
         
-        if cambiamenti:
-            if st.button("💾 Salva Tutte le Modifiche", type="primary"):
-                conn.update(worksheet="Addetti", data=df_mod)
-                st.cache_data.clear()
-                st.success("Modifiche salvate con successo!")
-                st.rerun()
+        if st.button("💾 Salva Tutte le Modifiche", type="primary"):
+            conn.update(worksheet="Addetti", data=df_mod)
+            st.cache_data.clear()
+            st.success("Modifiche salvate!")
+            st.rerun()
 
 # --- 4. AREA DISPONIBILITÀ ---
 elif menu == "📅 Area Disponibilità Staff":
