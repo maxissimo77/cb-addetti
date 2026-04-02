@@ -179,4 +179,64 @@ elif menu == "👥 Gestione Anagrafica":
             row_data = df_edit[df_edit['FullName'] == target].iloc[0]
             idx_to_edit = int(row_data['ID_INDEX'])
             
-            with st.form("
+            with st.form("edit_form"):
+                col1, col2 = st.columns(2)
+                new_n = col1.text_input("Nome", value=row_data['Nome'])
+                new_c = col2.text_input("Cognome", value=row_data['Cognome'])
+                
+                # Trova indice attuale della mansione per la selectbox
+                try: m_idx = lista_postazioni.index(row_data['Mansione'])
+                except: m_idx = 0
+                new_m = st.selectbox("Mansione", lista_postazioni, index=m_idx)
+                
+                # Trova indice attuale del riposo
+                try: r_idx = giorni_ita.index(row_data['GiornoRiposoSettimanale'])
+                except: r_idx = 0
+                new_r = st.selectbox("Riposo", giorni_ita, index=r_idx)
+                
+                c_mod, c_del = st.columns([1,1])
+                if c_mod.form_submit_button("💾 SALVA MODIFICHE"):
+                    data["addetti"].at[idx_to_edit, 'Nome'] = new_n
+                    data["addetti"].at[idx_to_edit, 'Cognome'] = new_c
+                    data["addetti"].at[idx_to_edit, 'Mansione'] = new_m
+                    data["addetti"].at[idx_to_edit, 'GiornoRiposoSettimanale'] = new_r
+                    conn.update(worksheet="Addetti", data=data["addetti"])
+                    st.cache_data.clear()
+                    st.success("Dati aggiornati!")
+                    st.rerun()
+                
+                if c_del.form_submit_button("🗑️ ELIMINA UTENTE"):
+                    updated_df = data["addetti"].drop(idx_to_edit)
+                    conn.update(worksheet="Addetti", data=updated_df)
+                    st.cache_data.clear()
+                    st.warning("Utente rimosso.")
+                    st.rerun()
+        else:
+            st.info("Nessun dato presente.")
+
+    st.divider()
+    st.write("### Elenco Completo")
+    st.dataframe(data["addetti"], use_container_width=True)
+
+# --- 5. POSTAZIONI ---
+elif menu == "🚩 Gestione Postazioni":
+    st.header("Postazioni Parco")
+    np = st.text_input("Nome Postazione")
+    if st.button("Salva"):
+        new = pd.DataFrame([{"Nome Postazione": np}])
+        conn.update(worksheet="Postazioni", data=pd.concat([data["postazioni"], new]))
+        st.cache_data.clear()
+        st.rerun()
+    st.table(data["postazioni"])
+
+# --- 6. PASSWORD ---
+elif menu == "🔑 Gestione Password":
+    st.header("Cambio Password")
+    with st.form("pwd"):
+        a_p = st.text_input("Admin", value=data["config"][data["config"]["Ruolo"]=="Admin"]["Password"].values[0])
+        u_p = st.text_input("User", value=data["config"][data["config"]["Ruolo"]=="User"]["Password"].values[0])
+        if st.form_submit_button("Aggiorna"):
+            new_c = pd.DataFrame([{"Ruolo": "Admin", "Password": a_p}, {"Ruolo": "User", "Password": u_p}])
+            conn.update(worksheet="Config", data=new_c)
+            st.cache_data.clear()
+            st.rerun()
