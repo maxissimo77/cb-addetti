@@ -63,7 +63,7 @@ giorni_ita = list(mappa_giorni.keys())
 opzioni_riposo = giorni_ita + ["Non Definito"]
 lista_postazioni = data["postazioni"]["Nome Postazione"].dropna().unique().tolist() if not data["postazioni"].empty else ["Generico"]
 
-# --- FUNZIONE CALENDARIO (LOGICA PRIORITÀ: ROSSO VINCE SU RIPOSO) ---
+# --- FUNZIONE CALENDARIO ---
 def genera_mini_calendario(df_persona, riposo_fisso, anno, mese):
     nomi_mesi_ita = {5: "MAGGIO", 6: "GIUGNO", 7: "LUGLIO", 8: "AGOSTO", 9: "SETTEMBRE"}
     st.markdown(f"<div style='text-align: center; background-color: #1f77b4; color: white; padding: 5px; border-radius: 5px; margin-bottom: 5px;'><b>{nomi_mesi_ita[mese]}</b></div>", unsafe_allow_html=True)
@@ -71,30 +71,26 @@ def genera_mini_calendario(df_persona, riposo_fisso, anno, mese):
     idx_riposo_fisso = mappa_giorni.get(riposo_fisso, -1)
     cal = calendar.monthcalendar(anno, mese)
     
-    html = '<table style="width:100%; border-collapse: collapse; text-align: center; font-size: 12px; table-layout: fixed; border: 1px solid #ddd;">'
+    html = '<table style="width:100%; border-collapse: collapse; text-align: center; font-size: 11px; table-layout: fixed; border: 1px solid #ddd;">'
     html += '<tr style="background:rgba(128,128,128,0.1);"><th>L</th><th>M</th><th>M</th><th>G</th><th>V</th><th>S</th><th>D</th></tr>'
     
     for week in cal:
-        html += '<tr style="height: 35px;">'
+        html += '<tr style="height: 30px;">'
         for i, day in enumerate(week):
             if day == 0: 
                 html += '<td style="border:1px solid rgba(128,128,128,0.1);"></td>'
             else:
                 d_str = f"{anno}-{mese:02d}-{day:02d}"
                 stato_serie = df_persona[df_persona["Data"].astype(str).str.contains(d_str, na=False)]["Stato"]
-                
                 bg, tx = "transparent", "inherit"
                 
-                # 1. CONTROLLO NON DISPONIBILITÀ (ROSSO)
                 is_not_available = not stato_serie[stato_serie.astype(str).str.contains("NON", case=False, na=False)].empty
                 
                 if is_not_available:
                     bg, tx = "#ff4b4b", "white"
                 else:
-                    # 2. SE NON È ROSSO, MOSTRA IL RIPOSO (ARANCIONE)
                     if i == idx_riposo_fisso:
                         bg, tx = "#ffa500", "white"
-                    # 3. SE C'È NOTA "DISPONIBILE" (VERDE)
                     elif not stato_serie.empty:
                         bg, tx = "#29b05c", "white"
                 
@@ -169,53 +165,36 @@ elif menu == "📅 Riepilogo Riposi Settimanali":
                         chi = add_m[add_m["GiornoRiposoSettimanale"] == g]
                         for _, r in chi.iterrows():
                             st.markdown(f"<div style='text-align: center; background-color: rgba(31, 119, 180, 0.1); padding: 10px 5px; border-radius: 5px; margin-top: 8px; margin-bottom: 10px; font-size: 14px; font-weight: 500; border: 1px solid rgba(31, 119, 180, 0.3);'>{r['Nome']} {r['Cognome']}</div>", unsafe_allow_html=True)
-                
-                non_def = add_m[add_m["GiornoRiposoSettimanale"] == "Non Definito"]
-                if not non_def.empty:
-                    st.markdown("<div style='margin-top: 20px; border-top: 1px solid rgba(128,128,128,0.3); padding-top: 10px;'><b>Riposo Non Definito:</b></div>", unsafe_allow_html=True)
-                    html_non_def = '<div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; margin-bottom: 20px;">'
-                    for _, r in non_def.iterrows():
-                        html_non_def += f"<div style='border: 2px solid #ffa500; padding: 6px 15px; border-radius: 8px; font-weight: bold; background-color: rgba(255, 165, 0, 0.1); display: inline-block; text-align: center; margin-bottom: 5px;'>{r['Nome']} {r['Cognome']}</div>"
-                    html_non_def += '</div>'
-                    st.markdown(html_non_def, unsafe_allow_html=True)
 
 # --- 3. GESTIONE RIPOSI RAPIDA ---
 elif menu == "📝 Gestione Riposi Rapida":
     st.header("Gestione Rapida Riposi")
-    if data["addetti"].empty:
-        st.warning("Nessun addetto in anagrafica.")
-    else:
-        df_mod = data["addetti"].copy()
-        
-        for m in lista_postazioni:
-            add_m = df_mod[df_mod["Mansione"] == m]
-            if not add_m.empty:
-                st.subheader(f"📍 {m}")
-                st.markdown(f"<div style='margin-bottom:5px; font-size: 0.9em; color: gray;'>Riepilogo riposi attuali per {m}:</div>", unsafe_allow_html=True)
-                conteggi = df_mod[df_mod["Mansione"] == m]["GiornoRiposoSettimanale"].value_counts()
-                
-                cols_count = st.columns(len(giorni_ita))
-                for i, g in enumerate(giorni_ita):
-                    n_rip = conteggi.get(g, 0)
-                    with cols_count[i]:
-                        st.markdown(f"<div style='text-align:center; border: 1px solid rgba(128,128,128,0.2); border-radius:5px; padding:5px; margin-bottom:15px;'><small>{g[:3]}</small><br><b style='color: {'#ffa500' if n_rip > 0 else 'inherit'};'>{n_rip}</b></div>", unsafe_allow_html=True)
-                
-                for idx, row in add_m.iterrows():
-                    c1, c2 = st.columns([2, 2])
-                    with c1: st.write(f"**{row['Nome']} {row['Cognome']}**")
-                    with c2:
-                        current_rip = row['GiornoRiposoSettimanale']
-                        try: idx_init = opzioni_riposo.index(current_rip)
-                        except: idx_init = len(opzioni_riposo) - 1
-                        nuovo_rip = st.selectbox(f"Riposo per {idx}", opzioni_riposo, index=idx_init, key=f"rip_rap_{idx}", label_visibility="collapsed")
-                        df_mod.at[idx, 'GiornoRiposoSettimanale'] = nuovo_rip
-                st.markdown("---")
-        
-        if st.button("💾 Salva Tutte le Modifiche", type="primary", use_container_width=True):
-            conn.update(worksheet="Addetti", data=df_mod)
-            st.cache_data.clear()
-            st.success("Modifiche salvate con successo!")
-            st.rerun()
+    df_mod = data["addetti"].copy()
+    for m in lista_postazioni:
+        add_m = df_mod[df_mod["Mansione"] == m]
+        if not add_m.empty:
+            st.subheader(f"📍 {m}")
+            conteggi = df_mod[df_mod["Mansione"] == m]["GiornoRiposoSettimanale"].value_counts()
+            cols_count = st.columns(len(giorni_ita))
+            for i, g in enumerate(giorni_ita):
+                n_rip = conteggi.get(g, 0)
+                with cols_count[i]:
+                    st.markdown(f"<div style='text-align:center; border: 1px solid rgba(128,128,128,0.2); border-radius:5px; padding:5px; margin-bottom:15px;'><small>{g[:3]}</small><br><b style='color: {'#ffa500' if n_rip > 0 else 'inherit'};'>{n_rip}</b></div>", unsafe_allow_html=True)
+            for idx, row in add_m.iterrows():
+                c1, c2 = st.columns([2, 2])
+                with c1: st.write(f"**{row['Nome']} {row['Cognome']}**")
+                with c2:
+                    current_rip = row['GiornoRiposoSettimanale']
+                    try: idx_init = opzioni_riposo.index(current_rip)
+                    except: idx_init = len(opzioni_riposo) - 1
+                    nuovo_rip = st.selectbox(f"Riposo per {idx}", opzioni_riposo, index=idx_init, key=f"rip_rap_{idx}", label_visibility="collapsed")
+                    df_mod.at[idx, 'GiornoRiposoSettimanale'] = nuovo_rip
+            st.markdown("---")
+    if st.button("💾 Salva Tutte le Modifiche", type="primary", use_container_width=True):
+        conn.update(worksheet="Addetti", data=df_mod)
+        st.cache_data.clear()
+        st.success("Modifiche salvate!")
+        st.rerun()
 
 # --- 4. AREA DISPONIBILITÀ ---
 elif menu == "📅 Area Disponibilità Staff":
@@ -226,7 +205,6 @@ elif menu == "📅 Area Disponibilità Staff":
     row_d = df_t[df_t['Full'] == sel_dip].iloc[0]
     df_p = data["disp"][(data["disp"]["Nome"] == row_d['Nome']) & (data["disp"]["Cognome"] == row_d['Cognome'])]
     
-    # Legenda aggiornata senza dicitura "Priorità Max"
     st.markdown("""<div style='display: flex; gap: 15px; margin-bottom: 15px;'><div style='background:#ff4b4b; color:white; padding:5px 12px; border-radius:5px; font-size: 14px;'><b>🔴 NON Disponibile</b></div><div style='background:#ffa500; color:white; padding:5px 12px; border-radius:5px; font-size: 14px;'><b>🟠 Riposo Fisso</b></div><div style='background:#29b05c; color:white; padding:5px 12px; border-radius:5px; font-size: 14px;'><b>🟢 Disponibile</b></div></div>""", unsafe_allow_html=True)
     
     c_cal = st.columns(5)
@@ -265,6 +243,7 @@ elif menu == "⚙️ Pianifica Fabbisogno":
 elif menu == "👥 Gestione Anagrafica":
     st.header("Anagrafica Staff")
     ta, te = st.tabs(["➕ Aggiungi", "✏️ Modifica/Elimina"])
+    
     with ta:
         with st.form("a"):
             n, c = st.text_input("Nome"), st.text_input("Cognome")
@@ -274,6 +253,7 @@ elif menu == "👥 Gestione Anagrafica":
                 conn.update(worksheet="Addetti", data=pd.concat([data["addetti"], new], ignore_index=True))
                 st.cache_data.clear()
                 st.rerun()
+                
     with te:
         if not data["addetti"].empty:
             df_e = data["addetti"].copy()
@@ -281,6 +261,19 @@ elif menu == "👥 Gestione Anagrafica":
             sel = st.selectbox("Chi modificare?", df_e['Full'].tolist())
             row_e = df_e[df_e['Full'] == sel].iloc[0]
             idx = int(row_e.name)
+            
+            # --- SEZIONE CALENDARIO RIEPILOGATIVO IN MODIFICA ---
+            st.markdown("### Riepilogo Disponibilità")
+            df_p_edit = data["disp"][(data["disp"]["Nome"] == row_e['Nome']) & (data["disp"]["Cognome"] == row_e['Cognome'])]
+            
+            c_cal_edit = st.columns(5)
+            # Mostra Maggio, Giugno, Luglio, Agosto, Settembre
+            for i_cal, m_cal in enumerate([5, 6, 7, 8, 9]):
+                with c_cal_edit[i_cal]:
+                    genera_mini_calendario(df_p_edit, row_e['GiornoRiposoSettimanale'], 2026, m_cal)
+            
+            st.markdown("---")
+            
             with st.form("e"):
                 en, ec = st.text_input("Nome", row_e['Nome']), st.text_input("Cognome", row_e['Cognome'])
                 em = st.selectbox("Mansione", lista_postazioni, index=lista_postazioni.index(row_e['Mansione']) if row_e['Mansione'] in lista_postazioni else 0)
