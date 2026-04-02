@@ -63,7 +63,7 @@ giorni_ita = list(mappa_giorni.keys())
 opzioni_riposo = giorni_ita + ["Non Definito"]
 lista_postazioni = data["postazioni"]["Nome Postazione"].dropna().unique().tolist() if not data["postazioni"].empty else ["Generico"]
 
-# --- FUNZIONE CALENDARIO (LOGICA PRIORITÀ AGGIORNATA) ---
+# --- FUNZIONE CALENDARIO (LOGICA PRIORITÀ: ROSSO VINCE SU RIPOSO) ---
 def genera_mini_calendario(df_persona, riposo_fisso, anno, mese):
     nomi_mesi_ita = {5: "MAGGIO", 6: "GIUGNO", 7: "LUGLIO", 8: "AGOSTO", 9: "SETTEMBRE"}
     st.markdown(f"<div style='text-align: center; background-color: #1f77b4; color: white; padding: 5px; border-radius: 5px; margin-bottom: 5px;'><b>{nomi_mesi_ita[mese]}</b></div>", unsafe_allow_html=True)
@@ -85,16 +85,16 @@ def genera_mini_calendario(df_persona, riposo_fisso, anno, mese):
                 
                 bg, tx = "transparent", "inherit"
                 
-                # 1. CONTROLLO NON DISPONIBILITÀ (ROSSO) - PRIORITÀ MASSIMA
+                # 1. CONTROLLO NON DISPONIBILITÀ (ROSSO)
                 is_not_available = not stato_serie[stato_serie.astype(str).str.contains("NON", case=False, na=False)].empty
                 
                 if is_not_available:
                     bg, tx = "#ff4b4b", "white"
                 else:
-                    # 2. SE IL GIORNO NON È "NON DISPONIBILE", CONTROLLIAMO SE È IL RIPOSO (ARANCIONE)
+                    # 2. SE NON È ROSSO, MOSTRA IL RIPOSO (ARANCIONE)
                     if i == idx_riposo_fisso:
                         bg, tx = "#ffa500", "white"
-                    # 3. SE C'È UNA NOTA "DISPONIBILE" ESPLICITA (VERDE)
+                    # 3. SE C'È NOTA "DISPONIBILE" (VERDE)
                     elif not stato_serie.empty:
                         bg, tx = "#29b05c", "white"
                 
@@ -226,7 +226,8 @@ elif menu == "📅 Area Disponibilità Staff":
     row_d = df_t[df_t['Full'] == sel_dip].iloc[0]
     df_p = data["disp"][(data["disp"]["Nome"] == row_d['Nome']) & (data["disp"]["Cognome"] == row_d['Cognome'])]
     
-    st.markdown("""<div style='display: flex; gap: 15px; margin-bottom: 15px;'><div style='background:#ff4b4b; color:white; padding:5px 12px; border-radius:5px; font-size: 14px;'><b>🔴 NON Disponibile (Priorità Max)</b></div><div style='background:#ffa500; color:white; padding:5px 12px; border-radius:5px; font-size: 14px;'><b>🟠 Riposo Fisso</b></div><div style='background:#29b05c; color:white; padding:5px 12px; border-radius:5px; font-size: 14px;'><b>🟢 Disponibile</b></div></div>""", unsafe_allow_html=True)
+    # Legenda aggiornata senza dicitura "Priorità Max"
+    st.markdown("""<div style='display: flex; gap: 15px; margin-bottom: 15px;'><div style='background:#ff4b4b; color:white; padding:5px 12px; border-radius:5px; font-size: 14px;'><b>🔴 NON Disponibile</b></div><div style='background:#ffa500; color:white; padding:5px 12px; border-radius:5px; font-size: 14px;'><b>🟠 Riposo Fisso</b></div><div style='background:#29b05c; color:white; padding:5px 12px; border-radius:5px; font-size: 14px;'><b>🟢 Disponibile</b></div></div>""", unsafe_allow_html=True)
     
     c_cal = st.columns(5)
     for idx, m in enumerate([5, 6, 7, 8, 9]):
