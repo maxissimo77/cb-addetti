@@ -11,63 +11,6 @@ pd.options.mode.string_storage = "python"
 # --- CONNESSIONE ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# --- SISTEMA DI LOGIN (OTTIMIZZATO) ---
-def check_password():
-    if "role" not in st.session_state:
-        st.title("🌊 WaterPark Staff Login")
-        pwd_input = st.text_input("Inserisci Password", type="password")
-        
-        if st.button("Accedi"):
-            try:
-                # Lettura fresca (ttl=0) per evitare il bug del doppio clic
-                conf = conn.read(worksheet="Config", ttl=0)
-                conf.columns = conf.columns.str.strip()
-                conf["Ruolo"] = conf["Ruolo"].astype(str).str.strip()
-                conf["Password"] = conf["Password"].astype(str).str.strip()
-
-                admin_pwd = str(conf[conf["Ruolo"] == "Admin"]["Password"].values[0])
-                user_pwd = str(conf[conf["Ruolo"] == "User"]["Password"].values[0])
-                
-                if pwd_input == admin_pwd:
-                    st.session_state["role"] = "Admin"
-                    st.rerun()
-                elif pwd_input == user_pwd:
-                    st.session_state["role"] = "User"
-                    st.rerun()
-                else:
-                    st.error("❌ Password errata.")
-            except Exception:
-                st.error("⚠️ Errore nel foglio 'Config'. Verifica che le colonne siano 'Ruolo' e 'Password'.")
-        return False
-    return True
-
-if not check_password():
-    st.stop()
-
-# --- CARICAMENTO DATI (SOLO DOPO LOGIN) ---
-@st.cache_data(ttl=10)
-def get_data():
-    return {
-        "addetti": conn.read(worksheet="Addetti"),
-        "disp": conn.read(worksheet="Disponibilita"),
-        "fabbisogno": conn.read(worksheet="Fabbisogno"),
-        "postazioni": conn.read(worksheet="Postazioni")
-    }
-
-data = get_data()
-mappa_giorni = {"Lunedì": 0, "Martedì": 1, "Mercoledì": 2, "Giovedì": 3, "Venerdì": 4, "Sabaimport streamlit as st
-from streamlit_gsheets import GSheetsConnection
-import pandas as pd
-from datetime import datetime, timedelta
-import calendar
-
-# --- CONFIGURAZIONE PAGINA ---
-st.set_page_config(page_title="WaterPark Manager 2026", layout="wide", page_icon="🌊")
-pd.options.mode.string_storage = "python"
-
-# --- CONNESSIONE ---
-conn = st.connection("gsheets", type=GSheetsConnection)
-
 # --- SISTEMA DI LOGIN ---
 def check_password():
     if "role" not in st.session_state:
