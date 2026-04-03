@@ -15,7 +15,7 @@ pd.options.mode.string_storage = "python"
 # --- CONNESSIONE ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# --- CARICAMENTO DATI (CORRETTO) ---
+# --- CARICAMENTO DATI ---
 @st.cache_data(ttl=60)
 def get_all_data():
     try:
@@ -26,6 +26,14 @@ def get_all_data():
             "postazioni": conn.read(worksheet="Postazioni"),
             "config": conn.read(worksheet="Config")
         }
+        # Pulizia nomi e conversione date per uniformità
+        for df_name in ["addetti", "disp"]:
+            res[df_name]["Nome"] = res[df_name]["Nome"].astype(str).str.strip()
+            res[df_name]["Cognome"] = res[df_name]["Cognome"].astype(str).str.strip()
+        
+        res["disp"]["Data"] = pd.to_datetime(res["disp"]["Data"]).dt.date
+        res["fabbisogno"]["Data"] = pd.to_datetime(res["fabbisogno"]["Data"]).dt.date
+        
         if "Contestazioni" in res["addetti"].columns:
             res["addetti"]["Contestazioni"] = res["addetti"]["Contestazioni"].astype(str).replace(['nan', 'None', '<NA>'], '')
         else:
@@ -83,12 +91,11 @@ def genera_mini_calendario(df_persona, riposo_fisso, anno, mese):
             if day == 0: html += '<td style="border:1px solid rgba(128,128,128,0.1);"></td>'
             else:
                 curr_d = datetime(anno, mese, day).date()
-                d_str = f"{anno}-{mese:02d}-{day:02d}"
                 is_open = data_apertura <= curr_d <= data_chiusura
                 if not is_open:
                     bg, tx, label = "#f0f0f0", "#bfbfbf", f"<span style='text-decoration: line-through;'>{day}</span>"
                 else:
-                    stato_row = df_persona[df_persona["Data"].astype(str).str.contains(d_str, na=False)]
+                    stato_row = df_persona[df_persona["Data"] == curr_d]
                     bg, tx, label = "transparent", "inherit", str(day)
                     if not stato_row.empty:
                         stato_val = str(stato_row["Stato"].iloc[0]).upper()
@@ -114,11 +121,12 @@ if st.sidebar.button("Logout"):
     for key in list(st.session_state.keys()): del st.session_state[key]
     st.rerun()
 
-# --- 1. DASHBOARD ---
+# --- 1. DASHBOARD (PARTE CORRETTA) ---
 if menu == "📊 Dashboard":
     st.header("Stato Occupazione Postazioni")
     input_d = st.date_input("Inizio visualizzazione (settimana):", default_date)
-    data_inizio = input_d.date() if hasattr(input_d, 'date') else input_d
+    # Assicuriamoci che input_d sia un oggetto date
+    data_inizio = input_d
     date_range = [data_inizio + timedelta(days=i) for i in range(7)]
     date_aperte = [d for d in date_range if data_apertura <= d <= data_chiusura]
     
@@ -130,14 +138,20 @@ if menu == "📊 Dashboard":
             with t:
                 curr_date = date_aperte[idx]
                 g_sett = giorni_ita[curr_date.weekday()]
-                fabb = data["fabbisogno"][data["fabbisogno"]["Data"].astype(str).str.contains(str(curr_date), na=False)]
-                disp = data["disp"][data["disp"]["Data"].astype(str).str.contains(str(curr_date), na=False)]
-                staff_totale = data["addetti"].copy()
-                staff_presente = staff_totale[staff_totale["GiornoRiposoSettimanale"] != g_sett]
                 
-                if not disp.empty:
-                    disp['Key'] = disp['Nome'] + " " + disp['Cognome']
-                    non_disp_keys = disp[~disp["Stato"].astype(str).str.contains("Disponibile", case=False, na=False)]['Key'].tolist()
+                # FILTRO CORRETTO: Uso confronto diretto tra oggetti date
+                fabb = data["fabbisogno"][data["fabbisogno"]["Data"] == curr_date]
+                disp_oggi = data["disp"][data["disp"]["Data"] == curr_date]
+                
+                staff_totale = data["addetti"].copy()
+                # 1. Chi NON ha il riposo oggi
+                staff_presente = staff_totale[staff_totale["GiornoRiposoSettimanale"] != g_sett].copy()
+                
+                # 2. Escludi chi ha segnato stati NON disponibili (Permesso, Assente, Malattia, NON Disponibile)
+                if not disp_oggi.empty:
+                    disp_oggi['Key'] = disp_oggi['Nome'] + " " + disp_oggi['Cognome']
+                    non_disp_keys = disp_oggi[~disp_oggi["Stato"].astype(str).str.contains("Disponibile", case=False, na=False)]['Key'].tolist()
+                    
                     staff_presente['Key'] = staff_presente['Nome'] + " " + staff_presente['Cognome']
                     staff_presente = staff_presente[~staff_presente['Key'].isin(non_disp_keys)]
                 
@@ -147,8 +161,10 @@ if menu == "📊 Dashboard":
                     f_row = fabb[fabb["Mansione"] == post]
                     req = int(f_row["Quantita"].iloc[0]) if not f_row.empty else 0
                     num_pres = len(presenti)
+                    
                     color_status = "#29b05c" if num_pres >= req and req > 0 else "#ff4b4b" if num_pres < req else "#1f77b4"
                     if req == 0: color_status = "#808080"
+                    
                     with cols[i % 3]:
                         st.markdown(f"""
                             <div style="border: 1px solid #ddd; border-radius: 10px; padding: 0px; margin-bottom: 20px; background-color: white; box-shadow: 2px 2px 5px rgba(0,0,0,0.05);">
@@ -226,9 +242,9 @@ elif menu == "📅 Area Disponibilità Staff":
         dr = st.date_input("Periodo:", value=[], min_value=data_apertura, max_value=data_chiusura)
         st_r = st.radio("Stato:", ["Disponibile", "NON Disponibile", "Permesso", "Assente", "Malattia"], horizontal=True)
         if st.button("Salva Date") and len(dr) == 2:
-            d_list = [str(dr[0] + timedelta(days=x)) for x in range((dr[1]-dr[0]).days + 1)]
+            d_list = [dr[0] + timedelta(days=x) for x in range((dr[1]-dr[0]).days + 1)]
             nuovi = pd.DataFrame([{"Nome": row_d['Nome'], "Cognome": row_d['Cognome'], "Data": d, "Stato": st_r} for d in d_list])
-            old = data["disp"][~((data["disp"]["Nome"] == row_d['Nome']) & (data["disp"]["Cognome"] == row_d['Cognome']) & (data["disp"]["Data"].astype(str).isin(d_list)))]
+            old = data["disp"][~((data["disp"]["Nome"] == row_d['Nome']) & (data["disp"]["Cognome"] == row_d['Cognome']) & (data["disp"]["Data"].isin(d_list)))]
             conn.update(worksheet="Disponibilita", data=pd.concat([old, nuovi], ignore_index=True)); st.cache_data.clear(); st.rerun()
 
 # --- 5. GESTIONE ANAGRAFICA ---
@@ -248,10 +264,11 @@ elif menu == "👥 Gestione Anagrafica":
             e_cont = st.text_area("Lettere di Contestazione", value=val_cont)
             cb1, cb2, _ = st.columns([1,1,2])
             if cb1.form_submit_button("💾 Salva"):
-                new_data_row = [en, ec, em, er, e_cont]
-                cols_target = ["Nome", "Cognome", "Mansione", "GiornoRiposoSettimanale", "Contestazioni"]
-                for i, col in enumerate(cols_target):
-                    data["addetti"].at[idx, col] = new_data_row[i]
+                data["addetti"].at[idx, "Nome"] = en.strip()
+                data["addetti"].at[idx, "Cognome"] = ec.strip()
+                data["addetti"].at[idx, "Mansione"] = em
+                data["addetti"].at[idx, "GiornoRiposoSettimanale"] = er
+                data["addetti"].at[idx, "Contestazioni"] = e_cont
                 conn.update(worksheet="Addetti", data=data["addetti"]); st.cache_data.clear(); st.session_state["editing_id"] = None; st.rerun()
             if cb2.form_submit_button("❌ Annulla"):
                 st.session_state["editing_id"] = None; st.rerun()
@@ -261,8 +278,6 @@ elif menu == "👥 Gestione Anagrafica":
             for idx, r in data["addetti"].iterrows():
                 disp_addetto = data["disp"][(data["disp"]["Nome"] == r['Nome']) & (data["disp"]["Cognome"] == r['Cognome'])]
                 conteggi = disp_addetto["Stato"].value_counts()
-                
-                # MODIFICA RICHIESTA: Font ingrandito (15px) e grassetto
                 sum_str = f"✅ Disponibile: {conteggi.get('Disponibile', 0)} | 🔵 Permessi: {conteggi.get('Permesso', 0)} | ⚫ Assente: {conteggi.get('Assente', 0)} | 🔘 Malattia: {conteggi.get('Malattia', 0)}"
 
                 with st.container():
@@ -271,10 +286,7 @@ elif menu == "👥 Gestione Anagrafica":
                     c1.markdown(f"**{r['Nome']} {r['Cognome']}**{' 🚩' if has_cont else ''}")
                     c2.caption(f"{r['Mansione']} | Riposo: {r['GiornoRiposoSettimanale']}")
                     if c3.button("✏️", key=f"ed_{idx}"): st.session_state["editing_id"] = idx; st.rerun()
-                    
-                    # RIGA MODIFICATA (Font ingrandito a 15px e Bold)
                     st.markdown(f"<div style='font-size: 15px; font-weight: bold; color: #444; margin-top: -10px; margin-bottom: 5px;'>{sum_str}</div>", unsafe_allow_html=True)
-                    
                     if has_cont:
                         with st.expander("Vedi contestazioni"): st.warning(r['Contestazioni'])
                     st.divider()
@@ -284,7 +296,7 @@ elif menu == "👥 Gestione Anagrafica":
                 nm, nr = st.selectbox("Mansione", lista_postazioni), st.selectbox("Riposo", opzioni_riposo)
                 ncnt = st.text_area("Contestazioni iniziali")
                 if st.form_submit_button("Aggiungi"):
-                    new_member = pd.DataFrame([{"Nome":nn, "Cognome":nc, "Mansione":nm, "GiornoRiposoSettimanale":nr, "Contestazioni":ncnt}])
+                    new_member = pd.DataFrame([{"Nome":nn.strip(), "Cognome":nc.strip(), "Mansione":nm, "GiornoRiposoSettimanale":nr, "Contestazioni":ncnt}])
                     conn.update(worksheet="Addetti", data=pd.concat([data["addetti"], new_member], ignore_index=True))
                     st.cache_data.clear(); st.rerun()
 
@@ -299,8 +311,8 @@ elif menu == "⚙️ Pianifica Fabbisogno":
     if date_list:
         f_inputs = {p: st.number_input(f"{p}:", min_value=0) for p in lista_postazioni}
         if st.button("💾 Salva"):
-            new_r = [{"Data": str(d), "Mansione": p, "Quantita": v} for d in date_list for p, v in f_inputs.items()]
-            old_d = data["fabbisogno"][~data["fabbisogno"]["Data"].astype(str).isin([str(d) for d in date_list])]
+            new_r = [{"Data": d, "Mansione": p, "Quantita": v} for d in date_list for p, v in f_inputs.items()]
+            old_d = data["fabbisogno"][~data["fabbisogno"]["Data"].isin(date_list)]
             conn.update(worksheet="Fabbisogno", data=pd.concat([old_d, pd.DataFrame(new_r)], ignore_index=True)); st.cache_data.clear(); st.rerun()
 
 elif menu == "⚙️ Impostazioni Stagione":
