@@ -66,16 +66,16 @@ lista_postazioni = data["postazioni"]["Nome Postazione"].dropna().unique().tolis
 # --- FUNZIONE CALENDARIO ---
 def genera_mini_calendario(df_persona, riposo_fisso, anno, mese):
     nomi_mesi_ita = {5: "MAGGIO", 6: "GIUGNO", 7: "LUGLIO", 8: "AGOSTO", 9: "SETTEMBRE"}
-    st.markdown(f"<div style='text-align: center; background-color: #1f77b4; color: white; padding: 5px; border-radius: 5px; margin-bottom: 5px;'><b>{nomi_mesi_ita[mese]}</b></div>", unsafe_allow_html=True)
+    st.markdown(f"<div style='text-align: center; background-color: #1f77b4; color: white; padding: 3px; border-radius: 5px; margin-bottom: 5px; font-size: 0.8em;'><b>{nomi_mesi_ita[mese]}</b></div>", unsafe_allow_html=True)
     
     idx_riposo_fisso = mappa_giorni.get(riposo_fisso, -1)
     cal = calendar.monthcalendar(anno, mese)
     
-    html = '<table style="width:100%; border-collapse: collapse; text-align: center; font-size: 11px; table-layout: fixed; border: 1px solid #ddd;">'
+    html = '<table style="width:100%; border-collapse: collapse; text-align: center; font-size: 10px; table-layout: fixed; border: 1px solid #ddd;">'
     html += '<tr style="background:rgba(128,128,128,0.1);"><th>L</th><th>M</th><th>M</th><th>G</th><th>V</th><th>S</th><th>D</th></tr>'
     
     for week in cal:
-        html += '<tr style="height: 30px;">'
+        html += '<tr style="height: 25px;">'
         for i, day in enumerate(week):
             if day == 0: 
                 html += '<td style="border:1px solid rgba(128,128,128,0.1);"></td>'
@@ -149,7 +149,7 @@ if menu == "📊 Dashboard":
                             st.caption(f"• {r['Nome']} {r['Cognome']}")
             st.markdown("---")
 
-# --- 2. RIEPILOGO RIPOSI (CORRETTO CON NON DEFINITI) ---
+# --- 2. RIEPILOGO RIPOSI ---
 elif menu == "📅 Riepilogo Riposi Settimanali":
     st.header("Riepilogo Giorni di Riposo")
     if data["addetti"].empty:
@@ -166,7 +166,6 @@ elif menu == "📅 Riepilogo Riposi Settimanali":
                         for _, r in chi.iterrows():
                             st.markdown(f"<div style='text-align: center; background-color: rgba(31, 119, 180, 0.1); padding: 10px 5px; border-radius: 5px; margin-top: 8px; margin-bottom: 10px; font-size: 14px; font-weight: 500; border: 1px solid rgba(31, 119, 180, 0.3);'>{r['Nome']} {r['Cognome']}</div>", unsafe_allow_html=True)
                 
-                # REINSERITO: Blocco per chi ha riposo "Non Definito"
                 non_def = add_m[add_m["GiornoRiposoSettimanale"] == "Non Definito"]
                 if not non_def.empty:
                     st.markdown("<div style='margin-top: 20px; border-top: 1px solid rgba(128,128,128,0.3); padding-top: 10px;'><b>Riposo Non Definito:</b></div>", unsafe_allow_html=True)
@@ -249,12 +248,18 @@ elif menu == "⚙️ Pianifica Fabbisogno":
         st.cache_data.clear()
         st.rerun()
 
-# --- 6. GESTIONE ANAGRAFICA ---
+# --- 6. GESTIONE ANAGRAFICA (CON LISTA CLICCABILE) ---
 elif menu == "👥 Gestione Anagrafica":
     st.header("Anagrafica Staff")
-    ta, te = st.tabs(["➕ Aggiungi", "✏️ Modifica/Elimina"])
+    
+    # Inizializziamo lo stato per navigare tra le schede se non esiste
+    if "edit_person" not in st.session_state:
+        st.session_state["edit_person"] = None
+
+    ta, te = st.tabs(["➕ Aggiungi / Lista Staff", "✏️ Modifica/Elimina"])
     
     with ta:
+        st.subheader("Inserisci Nuovo Addetto")
         with st.form("a"):
             n, c = st.text_input("Nome"), st.text_input("Cognome")
             m, r = st.selectbox("Mansione", lista_postazioni), st.selectbox("Riposo", opzioni_riposo)
@@ -263,14 +268,46 @@ elif menu == "👥 Gestione Anagrafica":
                 conn.update(worksheet="Addetti", data=pd.concat([data["addetti"], new], ignore_index=True))
                 st.cache_data.clear()
                 st.rerun()
+        
+        st.markdown("---")
+        st.subheader("Elenco Staff Attuale")
+        st.info("Clicca sul pulsante 'Modifica' accanto a un addetto per aprire la sua scheda personale.")
+        
+        if not data["addetti"].empty:
+            df_lista = data["addetti"].copy()
+            # Visualizzazione ordinata per Mansione
+            df_lista = df_lista.sort_values(by="Mansione")
+            
+            for idx, row in df_lista.iterrows():
+                col1, col2, col3, col4 = st.columns([2, 2, 2, 1])
+                with col1:
+                    st.write(f"**{row['Nome']} {row['Cognome']}**")
+                with col2:
+                    st.caption(f"📍 {row['Mansione']}")
+                with col3:
+                    st.caption(f"📅 Riposo: {row['GiornoRiposoSettimanale']}")
+                with col4:
+                    if st.button("✏️ Modifica", key=f"btn_edit_{idx}"):
+                        st.session_state["edit_person"] = f"{row['Nome']} {row['Cognome']}"
+                        # Non possiamo cambiare tab programmaticamente con i tab nativi in modo semplice, 
+                        # ma informiamo l'utente o usiamo un trucco di refresh.
+                        st.rerun()
+        else:
+            st.write("Nessun addetto inserito.")
                 
     with te:
         if not data["addetti"].empty:
             df_e = data["addetti"].copy()
             df_e['Full'] = df_e['Nome'] + " " + df_e['Cognome']
-            sel = st.selectbox("Chi modificare?", df_e['Full'].tolist())
+            
+            # Se l'utente ha cliccato su modifica dalla lista, pre-selezioniamo il nome
+            default_idx = 0
+            if st.session_state["edit_person"] in df_e['Full'].tolist():
+                default_idx = df_e['Full'].tolist().index(st.session_state["edit_person"])
+
+            sel = st.selectbox("Seleziona addetto da gestire:", df_e['Full'].tolist(), index=default_idx)
             row_e = df_e[df_e['Full'] == sel].iloc[0]
-            idx = int(row_e.name)
+            idx_orig = int(row_e.name)
             
             st.markdown("### Riepilogo Disponibilità")
             df_p_edit = data["disp"][(data["disp"]["Nome"] == row_e['Nome']) & (data["disp"]["Cognome"] == row_e['Cognome'])]
@@ -289,14 +326,15 @@ elif menu == "👥 Gestione Anagrafica":
                 except: idx_r = 0
                 er = st.selectbox("Riposo", opzioni_riposo, index=idx_r)
                 c1, c2 = st.columns(2)
-                if c1.form_submit_button("Salva"):
-                    data["addetti"].loc[idx] = [en, ec, em, er]
+                if c1.form_submit_button("Salva Modifiche"):
+                    data["addetti"].loc[idx_orig] = [en, ec, em, er]
                     conn.update(worksheet="Addetti", data=data["addetti"])
                     st.cache_data.clear()
                     st.rerun()
-                if c2.form_submit_button("Elimina"):
-                    conn.update(worksheet="Addetti", data=data["addetti"].drop(idx))
+                if c2.form_submit_button("🗑️ Elimina Addetto"):
+                    conn.update(worksheet="Addetti", data=data["addetti"].drop(idx_orig))
                     st.cache_data.clear()
+                    st.session_state["edit_person"] = None
                     st.rerun()
 
 # --- 7. POSTAZIONI ---
