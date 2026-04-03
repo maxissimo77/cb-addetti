@@ -58,13 +58,15 @@ data = get_data()
 # --- LOGICA DATE STAGIONE ---
 try:
     conf_df = data["config"]
-    # Convertiamo i valori del foglio in oggetti date puri
     data_apertura = pd.to_datetime(conf_df[conf_df["Ruolo"] == "Apertura"]["Password"].values[0]).date()
     data_chiusura = pd.to_datetime(conf_df[conf_df["Ruolo"] == "Chiusura"]["Password"].values[0]).date()
 except Exception:
-    # Fallback se le righe non esistono ancora
     data_apertura = datetime(2026, 5, 16).date()
     data_chiusura = datetime(2026, 9, 13).date()
+
+# Calcolo valore di default sicuro per i calendari (evita crash se oggi è fuori stagione)
+oggi = datetime.now().date()
+default_date = oggi if data_apertura <= oggi <= data_chiusura else data_apertura
 
 mappa_giorni = {"Lunedì": 0, "Martedì": 1, "Mercoledì": 2, "Giovedì": 3, "Venerdì": 4, "Sabato": 5, "Domenica": 6}
 giorni_ita = list(mappa_giorni.keys())
@@ -86,9 +88,7 @@ def genera_mini_calendario(df_persona, riposo_fisso, anno, mese):
             else:
                 curr_d = datetime(anno, mese, day).date()
                 d_str = f"{anno}-{mese:02d}-{day:02d}"
-                # Verifica apertura parco
                 is_open = data_apertura <= curr_d <= data_chiusura
-                
                 if not is_open:
                     bg, tx, label = "#f0f0f0", "#bfbfbf", f"<span style='text-decoration: line-through;'>{day}</span>"
                 else:
@@ -116,12 +116,9 @@ if st.sidebar.button("Logout"):
 # --- 1. DASHBOARD ---
 if menu == "📊 Dashboard":
     st.header("Dashboard")
-    input_d = st.date_input("Inizio visualizzazione:", datetime.now().date())
-    # Normalizzazione a date
+    input_d = st.date_input("Inizio visualizzazione:", default_date)
     data_inizio = input_d.date() if isinstance(input_d, datetime) else input_d
-    
     date_range = [data_inizio + timedelta(days=i) for i in range(7)]
-    # Filtro giorni aperti (confronto tra date)
     date_aperte = [d for d in date_range if data_apertura <= d <= data_chiusura]
     
     if not date_aperte:
@@ -163,10 +160,7 @@ elif menu == "📅 Riepilogo Riposi Settimanali":
                     st.markdown(f"<div style='text-align:center; background:rgba(128,128,128,0.2); padding:5px; border-radius:5px; margin-bottom:12px;'><b>{g}</b></div>", unsafe_allow_html=True)
                     chi = add_m[add_m["GiornoRiposoSettimanale"] == g]
                     for _, r in chi.iterrows():
-                        st.markdown(f"""<div style='text-align: center; background-color: rgba(31, 119, 180, 0.1); 
-                        padding: 10px 5px; border-radius: 5px; margin: 10px 0px; 
-                        font-size: 14px; font-weight: 500; border: 1px solid rgba(31, 119, 180, 0.3);'>
-                        {r['Nome']} {r['Cognome']}</div>""", unsafe_allow_html=True)
+                        st.markdown(f"<div style='text-align: center; background-color: rgba(31, 119, 180, 0.1); padding: 10px 5px; border-radius: 5px; margin: 10px 0px; font-size: 14px; font-weight: 500; border: 1px solid rgba(31, 119, 180, 0.3);'>{r['Nome']} {r['Cognome']}</div>", unsafe_allow_html=True)
             non_def = add_m[add_m["GiornoRiposoSettimanale"] == "Non Definito"]
             if not non_def.empty:
                 st.markdown("<div style='margin-top: 25px; border-top: 1px solid rgba(128,128,128,0.3); padding-top: 15px;'><b>Riposo Non Definito:</b></div>", unsafe_allow_html=True)
@@ -175,7 +169,7 @@ elif menu == "📅 Riepilogo Riposi Settimanali":
                     html_nd += f"<div style='border: 2px solid #ffa500; padding: 8px 15px; border-radius: 8px; font-weight: bold; background-color: rgba(255, 165, 0, 0.1); color: #333;'>{r['Nome']} {r['Cognome']}</div>"
                 st.markdown(html_nd + '</div>', unsafe_allow_html=True)
 
-# --- 3. GESTIONE RIPOSI RAPIDA ---
+# --- 3. GESTIONE RIPOSI RAPIDA (RIPRISTINATI TOTALI) ---
 elif menu == "📝 Gestione Riposi Rapida":
     st.header("Gestione Rapida Riposi")
     df_mod = data["addetti"].copy()
@@ -186,7 +180,9 @@ elif menu == "📝 Gestione Riposi Rapida":
             conteggi = add_m["GiornoRiposoSettimanale"].value_counts()
             cols_c = st.columns(7)
             for i, g in enumerate(giorni_ita):
-                with cols_c[i]: st.metric(g[:3], conteggi.get(g, 0))
+                n_rip = conteggi.get(g, 0)
+                with cols_c[i]: 
+                    st.markdown(f"<div style='text-align:center; border: 1px solid rgba(128,128,128,0.2); border-radius:5px; padding:5px; margin-bottom:15px;'><small>{g[:3]}</small><br><b style='color: {'#ffa500' if n_rip > 0 else 'inherit'};'>{n_rip}</b></div>", unsafe_allow_html=True)
             for idx, row in add_m.iterrows():
                 c1, c2 = st.columns([2, 1])
                 c1.write(f"**{row['Nome']} {row['Cognome']}**")
@@ -222,12 +218,14 @@ elif menu == "📅 Area Disponibilità Staff":
             conn.update(worksheet="Disponibilita", data=pd.concat([old, nuovi], ignore_index=True))
             st.cache_data.clear(); st.rerun()
 
-# --- 5. PIANIFICA FABBISOGNO ---
+# --- 5. PIANIFICA FABBISOGNO (FIX ERRORE DATE) ---
 elif menu == "⚙️ Pianifica Fabbisogno":
     st.header("Gestione Fabbisogno Staff")
     tipo = st.radio("Modalità:", ["Giorno Singolo", "Intervallo"], horizontal=True)
+    
     if tipo == "Giorno Singolo":
-        dt = st.date_input("Giorno:", datetime.now().date(), min_value=data_apertura, max_value=data_chiusura)
+        # Usiamo default_date invece di datetime.now()
+        dt = st.date_input("Giorno:", default_date, min_value=data_apertura, max_value=data_chiusura)
         date_list = [dt]
     else:
         dr = st.date_input("Periodo:", value=[], min_value=data_apertura, max_value=data_chiusura)
@@ -285,7 +283,6 @@ elif menu == "⚙️ Impostazioni Stagione":
         new_ch = st.date_input("Data Chiusura Parco:", data_chiusura)
         if st.form_submit_button("Salva Date Stagione"):
             conf_agg = data["config"].copy()
-            # Gestione righe Config
             for r, v in [("Apertura", str(new_ap)), ("Chiusura", str(new_ch))]:
                 if r not in conf_agg["Ruolo"].values:
                     conf_agg = pd.concat([conf_agg, pd.DataFrame([{"Ruolo": r, "Password": v}])], ignore_index=True)
