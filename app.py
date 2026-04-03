@@ -128,7 +128,7 @@ elif menu == "📅 Riepilogo Riposi Settimanali":
                     st.markdown(f"<div style='text-align:center; background:rgba(128,128,128,0.2); padding:5px; border-radius:5px; margin-bottom:12px;'><b>{g}</b></div>", unsafe_allow_html=True)
                     chi = add_m[add_m["GiornoRiposoSettimanale"] == g]
                     for _, r in chi.iterrows():
-                        # Riquadro azzurro con spaziatura sopra e sotto (margin)
+                        # Riquadro azzurro con spaziatura sopra e sotto
                         st.markdown(f"""
                             <div style='text-align: center; background-color: rgba(31, 119, 180, 0.1); 
                             padding: 10px 5px; border-radius: 5px; margin: 10px 0px; 
@@ -136,6 +136,23 @@ elif menu == "📅 Riepilogo Riposi Settimanali":
                                 {r['Nome']} {r['Cognome']}
                             </div>
                         """, unsafe_allow_html=True)
+            
+            # --- PARTE 2: RIPOSO NON DEFINITO ---
+            non_def = add_m[add_m["GiornoRiposoSettimanale"] == "Non Definito"]
+            if not non_def.empty:
+                st.markdown("<div style='margin-top: 25px; border-top: 1px solid rgba(128,128,128,0.3); padding-top: 15px;'><b>Riposo Non Definito:</b></div>", unsafe_allow_html=True)
+                
+                # Creiamo una stringa HTML unica per tutti i nomi non definiti
+                html_nd = '<div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; margin-bottom: 20px;">'
+                for _, r in non_def.iterrows():
+                    html_nd += f"""
+                        <div style='border: 2px solid #ffa500; padding: 8px 15px; border-radius: 8px; 
+                        font-weight: bold; background-color: rgba(255, 165, 0, 0.1); color: #333;'>
+                            {r['Nome']} {r['Cognome']}
+                        </div>
+                    """
+                html_nd += '</div>' # Chiudiamo il contenitore flex dopo il ciclo
+                st.markdown(html_nd, unsafe_allow_html=True)
             
             # --- PARTE 2: RIPOSO NON DEFINITO (SOTTO LA GRIGLIA) ---
             non_def = add_m[add_m["GiornoRiposoSettimanale"] == "Non Definito"]
