@@ -26,13 +26,14 @@ def get_all_data():
             "postazioni": conn.read(worksheet="Postazioni"),
             "config": conn.read(worksheet="Config")
         }
-        # Pulizia nomi e conversione date per uniformità
+        # Pulizia nomi e normalizzazione stringhe
         for df_name in ["addetti", "disp"]:
-            res[df_name]["Nome"] = res[df_name]["Nome"].astype(str).str.strip()
-            res[df_name]["Cognome"] = res[df_name]["Cognome"].astype(str).str.strip()
+            res[df_name]["Nome"] = res[df_name].get("Nome", "").astype(str).str.strip()
+            res[df_name]["Cognome"] = res[df_name].get("Cognome", "").astype(str).str.strip()
         
-        res["disp"]["Data"] = pd.to_datetime(res["disp"]["Data"]).dt.date
-        res["fabbisogno"]["Data"] = pd.to_datetime(res["fabbisogno"]["Data"]).dt.date
+        # CORREZIONE: Conversione date con format='mixed' per evitare errori di localizzazione
+        res["disp"]["Data"] = pd.to_datetime(res["disp"]["Data"], format='mixed', dayfirst=False).dt.date
+        res["fabbisogno"]["Data"] = pd.to_datetime(res["fabbisogno"]["Data"], format='mixed', dayfirst=False).dt.date
         
         if "Contestazioni" in res["addetti"].columns:
             res["addetti"]["Contestazioni"] = res["addetti"]["Contestazioni"].astype(str).replace(['nan', 'None', '<NA>'], '')
@@ -52,8 +53,9 @@ conf_df.columns = conf_df.columns.str.strip()
 try:
     admin_pwd = str(conf_df[conf_df["Ruolo"] == "Admin"]["Password"].values[0])
     user_pwd = str(conf_df[conf_df["Ruolo"] == "User"]["Password"].values[0])
-    data_apertura = pd.to_datetime(conf_df[conf_df["Ruolo"] == "Apertura"]["Password"].values[0]).date()
-    data_chiusura = pd.to_datetime(conf_df[conf_df["Ruolo"] == "Chiusura"]["Password"].values[0]).date()
+    # CORREZIONE: Conversione date config con format='mixed'
+    data_apertura = pd.to_datetime(conf_df[conf_df["Ruolo"] == "Apertura"]["Password"].values[0], format='mixed').date()
+    data_chiusura = pd.to_datetime(conf_df[conf_df["Ruolo"] == "Chiusura"]["Password"].values[0], format='mixed').date()
 except Exception:
     admin_pwd, user_pwd = "admin", "staff"
     data_apertura = datetime(2026, 5, 16).date()
@@ -95,6 +97,7 @@ def genera_mini_calendario(df_persona, riposo_fisso, anno, mese):
                 if not is_open:
                     bg, tx, label = "#f0f0f0", "#bfbfbf", f"<span style='text-decoration: line-through;'>{day}</span>"
                 else:
+                    # CORREZIONE: Confronto diretto tra oggetti date
                     stato_row = df_persona[df_persona["Data"] == curr_d]
                     bg, tx, label = "transparent", "inherit", str(day)
                     if not stato_row.empty:
@@ -113,7 +116,7 @@ def genera_mini_calendario(df_persona, riposo_fisso, anno, mese):
 # --- SIDEBAR ---
 st.sidebar.image("https://www.caribebay.it/sites/default/files/caribebay-logo.png", width=200)
 menu_options = ["📊 Dashboard", "📅 Riepilogo Riposi Settimanali"]
-if st.session_state["role"] == "Admin":
+if st.session_state.get("role") == "Admin":
     menu_options += ["📝 Gestione Riposi Rapida", "📅 Area Disponibilità Staff", "⚙️ Pianifica Fabbisogno", "👥 Gestione Anagrafica", "🚩 Gestione Postazioni", "⚙️ Impostazioni Stagione", "🔑 Gestione Password"]
 
 menu = st.sidebar.radio("Vai a:", menu_options)
@@ -121,13 +124,11 @@ if st.sidebar.button("Logout"):
     for key in list(st.session_state.keys()): del st.session_state[key]
     st.rerun()
 
-# --- 1. DASHBOARD (PARTE CORRETTA) ---
+# --- 1. DASHBOARD (CORREZIONE CONTEGGIO E DATE) ---
 if menu == "📊 Dashboard":
     st.header("Stato Occupazione Postazioni")
     input_d = st.date_input("Inizio visualizzazione (settimana):", default_date)
-    # Assicuriamoci che input_d sia un oggetto date
-    data_inizio = input_d
-    date_range = [data_inizio + timedelta(days=i) for i in range(7)]
+    date_range = [input_d + timedelta(days=i) for i in range(7)]
     date_aperte = [d for d in date_range if data_apertura <= d <= data_chiusura]
     
     if not date_aperte:
@@ -139,32 +140,28 @@ if menu == "📊 Dashboard":
                 curr_date = date_aperte[idx]
                 g_sett = giorni_ita[curr_date.weekday()]
                 
-                # FILTRO CORRETTO: Uso confronto diretto tra oggetti date
-                fabb = data["fabbisogno"][data["fabbisogno"]["Data"] == curr_date]
+                # CORREZIONE: Filtro date standardizzato
+                fabb_oggi = data["fabbisogno"][data["fabbisogno"]["Data"] == curr_date]
                 disp_oggi = data["disp"][data["disp"]["Data"] == curr_date]
                 
                 staff_totale = data["addetti"].copy()
-                # 1. Chi NON ha il riposo oggi
                 staff_presente = staff_totale[staff_totale["GiornoRiposoSettimanale"] != g_sett].copy()
                 
-                # 2. Escludi chi ha segnato stati NON disponibili (Permesso, Assente, Malattia, NON Disponibile)
                 if not disp_oggi.empty:
                     disp_oggi['Key'] = disp_oggi['Nome'] + " " + disp_oggi['Cognome']
                     non_disp_keys = disp_oggi[~disp_oggi["Stato"].astype(str).str.contains("Disponibile", case=False, na=False)]['Key'].tolist()
-                    
                     staff_presente['Key'] = staff_presente['Nome'] + " " + staff_presente['Cognome']
                     staff_presente = staff_presente[~staff_presente['Key'].isin(non_disp_keys)]
                 
                 cols = st.columns(3)
                 for i, post in enumerate(lista_postazioni):
                     presenti = staff_presente[staff_presente["Mansione"] == post]
-                    f_row = fabb[fabb["Mansione"] == post]
+                    f_row = fabb_oggi[fabb_oggi["Mansione"] == post]
                     req = int(f_row["Quantita"].iloc[0]) if not f_row.empty else 0
                     num_pres = len(presenti)
                     
                     color_status = "#29b05c" if num_pres >= req and req > 0 else "#ff4b4b" if num_pres < req else "#1f77b4"
                     if req == 0: color_status = "#808080"
-                    
                     with cols[i % 3]:
                         st.markdown(f"""
                             <div style="border: 1px solid #ddd; border-radius: 10px; padding: 0px; margin-bottom: 20px; background-color: white; box-shadow: 2px 2px 5px rgba(0,0,0,0.05);">
@@ -179,7 +176,7 @@ if menu == "📊 Dashboard":
                             </div>
                         """, unsafe_allow_html=True)
 
-# --- 2. RIEPILOGO RIPOSI ---
+# --- LE RESTANTI SEZIONI RIMANGONO INVARIATE ---
 elif menu == "📅 Riepilogo Riposi Settimanali":
     st.header("Riepilogo Giorni di Riposo")
     for m in lista_postazioni:
@@ -200,7 +197,6 @@ elif menu == "📅 Riepilogo Riposi Settimanali":
                     html_nd += f"<div style='border: 2px solid #ffa500; padding: 8px 15px; border-radius: 8px; font-weight: bold; background-color: rgba(255, 165, 0, 0.1); color: #333;'>{r['Nome']} {r['Cognome']}</div>"
                 st.markdown(html_nd + '</div>', unsafe_allow_html=True)
 
-# --- 3. GESTIONE RIPOSI RAPIDA ---
 elif menu == "📝 Gestione Riposi Rapida":
     st.header("Gestione Rapida Riposi Settimanali")
     df_mod = data["addetti"].copy()
@@ -227,7 +223,6 @@ elif menu == "📝 Gestione Riposi Rapida":
     if st.button("💾 Salva Tutte le Modifiche", type="primary", use_container_width=True):
         conn.update(worksheet="Addetti", data=df_mod); st.cache_data.clear(); st.success("Salvato!"); st.rerun()
 
-# --- 4. AREA DISPONIBILITÀ ---
 elif menu == "📅 Area Disponibilità Staff":
     st.header("Calendario Disponibilità Individuale")
     df_t = data["addetti"].copy()
@@ -247,7 +242,6 @@ elif menu == "📅 Area Disponibilità Staff":
             old = data["disp"][~((data["disp"]["Nome"] == row_d['Nome']) & (data["disp"]["Cognome"] == row_d['Cognome']) & (data["disp"]["Data"].isin(d_list)))]
             conn.update(worksheet="Disponibilita", data=pd.concat([old, nuovi], ignore_index=True)); st.cache_data.clear(); st.rerun()
 
-# --- 5. GESTIONE ANAGRAFICA ---
 elif menu == "👥 Gestione Anagrafica":
     st.header("Anagrafica Personale")
     if "editing_id" not in st.session_state: st.session_state["editing_id"] = None
@@ -279,7 +273,6 @@ elif menu == "👥 Gestione Anagrafica":
                 disp_addetto = data["disp"][(data["disp"]["Nome"] == r['Nome']) & (data["disp"]["Cognome"] == r['Cognome'])]
                 conteggi = disp_addetto["Stato"].value_counts()
                 sum_str = f"✅ Disponibile: {conteggi.get('Disponibile', 0)} | 🔵 Permessi: {conteggi.get('Permesso', 0)} | ⚫ Assente: {conteggi.get('Assente', 0)} | 🔘 Malattia: {conteggi.get('Malattia', 0)}"
-
                 with st.container():
                     c1, c2, c3 = st.columns([3, 3, 1])
                     has_cont = 'Contestazioni' in r and pd.notna(r['Contestazioni']) and str(r['Contestazioni']).strip() != ""
@@ -300,7 +293,6 @@ elif menu == "👥 Gestione Anagrafica":
                     conn.update(worksheet="Addetti", data=pd.concat([data["addetti"], new_member], ignore_index=True))
                     st.cache_data.clear(); st.rerun()
 
-# --- ALTRE SEZIONI ---
 elif menu == "⚙️ Pianifica Fabbisogno":
     st.header("Fabbisogno")
     tipo = st.radio("Modalità:", ["Giorno Singolo", "Intervallo"], horizontal=True)
