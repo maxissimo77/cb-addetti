@@ -126,7 +126,7 @@ if menu == "📊 Dashboard":
     if not date_aperte:
         st.warning(f"⚠️ Parco CHIUSO nel periodo selezionato.")
     else:
-        # Funzioni helper per pulizia e confronto
+        # Funzioni helper
         def to_date_only(val):
             try: return pd.to_datetime(val).date()
             except: return None
@@ -138,74 +138,63 @@ if menu == "📊 Dashboard":
         tabs = st.tabs([d.strftime("%d/%m") for d in date_aperte])
         for idx, t in enumerate(tabs):
             with t:
-                # 1. PARAMETRI DEL GIORNO SELEZIONATO NELLA TAB
                 d_tab = date_aperte[idx]
                 giorno_sett_oggi = norm(giorni_ita[d_tab.weekday()])
                 
-                # 2. FILTRO FABBISOGNO
+                # 1. FILTRO FABBISOGNO
                 df_f = data["fabbisogno"].copy()
                 df_f['d_pure'] = df_f['Data'].apply(to_date_only)
                 fabb_oggi = df_f[df_f['d_pure'] == d_tab]
                 
-                # 3. IDENTIFICAZIONE ASSENTI (Tabella Disponibilità)
+                # 2. IDENTIFICAZIONE ASSENTI (Tabella Disponibilità)
                 df_dis = data["disp"].copy()
                 df_dis['d_pure'] = df_dis['Data'].apply(to_date_only)
                 disp_oggi = df_dis[df_dis['d_pure'] == d_tab]
                 
-                # Chiunque abbia uno stato che NON sia "Disponibile" viene segnato come assente
-                stati_esclusione = ["NON DISPONIBILE", "MALATTIA", "ASSENTE", "PERMESSO"]
-                nomi_assenti = disp_oggi[
-                    disp_oggi["Stato"].apply(norm).isin(stati_esclusione) | 
-                    (~disp_oggi["Stato"].apply(norm).contains("DISPONIBILE", na=False))
-                ]
+                # Applichiamo la normalizzazione allo stato per il confronto
+                disp_oggi["Stato_Norm"] = disp_oggi["Stato"].apply(norm)
+                
+                # Chiunque abbia uno stato che NON è "DISPONIBILE" viene escluso
+                nomi_assenti = disp_oggi[disp_oggi["Stato_Norm"] != "DISPONIBILE"]
                 lista_nera_nomi = (nomi_assenti["Nome"].apply(norm) + nomi_assenti["Cognome"].apply(norm)).tolist()
 
-                # 4. COSTRUZIONE LISTA PRESENTI (FILTRAGGIO RESTRITTIVO)
+                # 3. COSTRUZIONE LISTA PRESENTI
                 staff_base = data["addetti"].copy()
-                
-                # Normalizziamo per il confronto
                 staff_base["ID_UNICO"] = staff_base["Nome"].apply(norm) + staff_base["Cognome"].apply(norm)
                 staff_base["RIPOSO_NORM"] = staff_base["GiornoRiposoSettimanale"].apply(norm)
 
-                # --- APPLICAZIONE FILTRI COMBINATI ---
-                # Un addetto è presente solo se:
-                # IL SUO RIPOSO != GIORNO DI OGGI  --- E ---  IL SUO NOME NON È NEI "NERI"
+                # FILTRO DOPPIO: No riposo oggi E non presente in lista nera assenze
                 presenti_effettivi = staff_base[
                     (staff_base["RIPOSO_NORM"] != giorno_sett_oggi) & 
                     (~staff_base["ID_UNICO"].isin(lista_nera_nomi))
                 ].copy()
 
-                # 5. RENDERING DELLE CARD
+                # 4. RENDERING CARD
                 cols = st.columns(3)
                 for i, post in enumerate(lista_postazioni):
                     p_norm = norm(post)
-                    # Addetti filtrati per questa specifica postazione
-                    staff_postazione = presenti_effettivi[presenti_effettivi["Mansione"].apply(norm) == p_norm]
+                    staff_post = presenti_effettivi[presenti_effettivi["Mansione"].apply(norm) == p_norm]
                     
-                    # Fabbisogno
                     f_row = fabb_oggi[fabb_oggi["Mansione"].apply(norm) == p_norm]
                     try:
                         req = int(f_row["Quantita"].iloc[0]) if not f_row.empty else 0
                     except:
                         req = 0
                     
-                    num_pres = len(staff_postazione)
-                    
-                    # Colore dinamico
-                    if req <= 0: color = "#808080"
-                    elif num_pres >= req: color = "#29b05c"
-                    else: color = "#ff4b4b"
+                    num_pres = len(staff_post)
+                    color = "#29b05c" if num_pres >= req and req > 0 else "#ff4b4b" if num_pres < req else "#808080"
+                    if req == 0: color = "#808080"
 
                     with cols[i % 3]:
                         st.markdown(f"""
                             <div style="border: 1px solid #ddd; border-radius: 10px; margin-bottom: 20px; background: white; box-shadow: 2px 2px 5px rgba(0,0,0,0.05);">
-                                <div style="background: {color}; color: white; padding: 10px; border-radius: 10px 10px 0 0; text-align: center; font-weight: bold; font-size: 14px;">
+                                <div style="background: {color}; color: white; padding: 10px; border-radius: 10px 10px 0 0; text-align: center; font-weight: bold;">
                                     {post.upper()}
                                 </div>
                                 <div style="padding: 15px; text-align: center;">
-                                    <div style="font-size: 26px; font-weight: bold; color: #333;">{num_pres} <span style="font-size: 18px; color: #888; font-weight: normal;">/ {req}</span></div>
-                                    <div style="margin-top: 10px; text-align: left; border-top: 1px solid #eee; padding-top: 8px; height: 130px; overflow-y: auto;">
-                                        {"".join([f"<div style='font-size: 13px; color: #444; border-bottom: 1px solid #f9f9f9; padding: 2px 0;'>• {r['Nome']} {r['Cognome']}</div>" for _, r in staff_postazione.iterrows()]) if not staff_postazione.empty else "<div style='color:#999; font-size:12px; font-style:italic;'>Nessuno disponibile</div>"}
+                                    <div style="font-size: 24px; font-weight: bold;">{num_pres} / {req}</div>
+                                    <div style="margin-top: 10px; text-align: left; border-top: 1px solid #eee; padding-top: 5px; height: 120px; overflow-y: auto;">
+                                        {"".join([f"<div style='font-size: 12px; border-bottom: 1px solid #f0f0f0; padding: 2px 0;'>• {r['Nome']} {r['Cognome']}</div>" for _, r in staff_post.iterrows()]) if not staff_post.empty else "<div style='color:gray; font-size:11px;'>Nessun disponibile</div>"}
                                     </div>
                                 </div>
                             </div>
