@@ -74,26 +74,18 @@ def genera_mini_calendario(df_persona, riposo_fisso, anno, mese):
     nomi_mesi_ita = {5: "MAGGIO", 6: "GIUGNO", 7: "LUGLIO", 8: "AGOSTO", 9: "SETTEMBRE"}
     st.markdown(f"<div style='text-align: center; background-color: #1f77b4; color: white; padding: 5px; border-radius: 5px; margin-bottom: 5px;'><b>{nomi_mesi_ita.get(mese, 'Mese')}</b></div>", unsafe_allow_html=True)
     
-    # --- NORMALIZZAZIONE AGGRESSIVA DEL RIPOSO ---
-    # Creiamo una mappa tutta in minuscolo per evitare errori di battitura
-    mappa_minuscola = {k.lower(): v for k, v in mappa_giorni.items()}
+    # Normalizzazione per il confronto
+    mappa_lower = {k.lower(): v for k, v in mappa_giorni.items()}
+    r_pulito = str(riposo_fisso).strip().lower()
+    idx_riposo_fisso = mappa_lower.get(r_pulito, -1)
     
-    # Puliamo la stringa in ingresso: togliamo spazi, accenti comuni e rendiamo minuscolo
-    riposo_str = str(riposo_fisso).strip().lower()
-    
-    # Gestione specifica per le lettere accentate che a volte saltano dai database
-    riposo_str = riposo_str.replace("di'", "dì").replace("di", "dì") 
-    
-    idx_riposo_fisso = mappa_minuscola.get(riposo_str, -1)
-    
-    # --- COSTRUZIONE TABELLA ---
     cal = calendar.monthcalendar(anno, mese)
     html = '<table style="width:100%; border-collapse: collapse; text-align: center; font-size: 11px; table-layout: fixed; border: 1px solid #ddd;">'
     html += '<tr style="background:rgba(128,128,128,0.1);"><th>L</th><th>M</th><th>M</th><th>G</th><th>V</th><th>S</th><th>D</th></tr>'
     
     for week in cal:
         html += '<tr style="height: 30px;">'
-        for i, day in enumerate(week): # i=0 è Lunedì, i=6 è Domenica
+        for i, day in enumerate(week):
             if day == 0:
                 html += '<td style="border:1px solid rgba(128,128,128,0.1);"></td>'
             else:
@@ -101,28 +93,37 @@ def genera_mini_calendario(df_persona, riposo_fisso, anno, mese):
                 d_str = curr_d.strftime("%Y-%m-%d")
                 is_open = data_apertura <= curr_d <= data_chiusura
                 
-                label = str(day)
-                bg, tx = "transparent", "inherit"
+                bg, tx, label = "transparent", "inherit", str(day)
 
                 if not is_open:
                     bg, tx, label = "#f0f0f0", "#bfbfbf", f"<span style='text-decoration: line-through;'>{day}</span>"
                 else:
-                    # 1. ASSEGNAZIONE RIPOSO FISSO (ARANCIONE)
-                    if i == idx_riposo_fisso:
-                        bg, tx = "#ffa500", "white"
+                    # 1. CONTROLLO SE C'È UNA NOTA NEL DB
+                    stato_row = df_persona[df_persona["Data"].astype(str).str.contains(d_str, na=False)]
                     
-                    # 2. SOVRASCRITTURA DA DATABASE DISPONIBILITÀ
-                    if not df_persona.empty:
-                        # Controllo flessibile sulla data
-                        stato_row = df_persona[df_persona["Data"].astype(str).str.contains(d_str, na=False)]
+                    # 2. LOGICA DI PRIORITÀ COLORI
+                    if i == idx_riposo_fisso:
+                        # Se è il giorno di riposo, mettiamo ARANCIONE di default
+                        bg, tx = "#ffa500", "white"
                         
+                        # Se però nel DB c'è un'assenza GRAVE (non un semplice "disponibile"), cambiamo colore
                         if not stato_row.empty:
-                            stato_val = str(stato_row["Stato"].iloc[0]).upper()
-                            if "NON" in stato_val: bg, tx = "#ff4b4b", "white"
-                            elif "PERMESSO" in stato_val: bg, tx = "#00008B", "white"
-                            elif "ASSENTE" in stato_val: bg, tx = "#000000", "white"
-                            elif "MALATTIA" in stato_val: bg, tx = "#696969", "white"
-                            elif "DISPONIBILE" in stato_val: bg, tx = "#29b05c", "white"
+                            s_val = str(stato_row["Stato"].iloc[0]).upper()
+                            if "NON" in s_val: bg, tx = "#ff4b4b", "white"
+                            elif "PERMESSO" in s_val: bg, tx = "#00008B", "white"
+                            elif "ASSENTE" in s_val: bg, tx = "#000000", "white"
+                            elif "MALATTIA" in s_val: bg, tx = "#696969", "white"
+                            # Se s_val è "DISPONIBILE", lo ignoriamo e lasciamo l'arancione del riposo
+                    
+                    else:
+                        # Se NON è il giorno di riposo, usiamo i colori del DB
+                        if not stato_row.empty:
+                            s_val = str(stato_row["Stato"].iloc[0]).upper()
+                            if "NON" in s_val: bg, tx = "#ff4b4b", "white"
+                            elif "PERMESSO" in s_val: bg, tx = "#00008B", "white"
+                            elif "ASSENTE" in s_val: bg, tx = "#000000", "white"
+                            elif "MALATTIA" in s_val: bg, tx = "#696969", "white"
+                            elif "DISPONIBILE" in s_val: bg, tx = "#29b05c", "white"
 
                 html += f'<td style="background:{bg}; color:{tx}; border:1px solid rgba(128,128,128,0.2); font-weight:bold;">{label}</td>'
         html += '</tr>'
