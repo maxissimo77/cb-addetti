@@ -126,6 +126,7 @@ if menu == "📊 Dashboard":
     if not date_aperte:
         st.warning(f"⚠️ Parco CHIUSO nel periodo selezionato.")
     else:
+        # Funzione per rendere ogni data un oggetto date puro
         def to_date_safe(val):
             try: return pd.to_datetime(val).date()
             except: return None
@@ -133,61 +134,62 @@ if menu == "📊 Dashboard":
         tabs = st.tabs([d.strftime("%d/%m") for d in date_aperte])
         for idx, t in enumerate(tabs):
             with t:
+                # DATA SPECIFICA DI QUESTA TAB
                 data_tab = date_aperte[idx]
-                # Normalizziamo il giorno della settimana (es. "LUNEDÌ")
-                g_sett_oggi = giorni_ita[data_tab.weekday()].strip().upper()
+                nome_giorno_oggi = giorni_ita[data_tab.weekday()].upper().strip()
                 
-                # --- 1. FILTRO FABBISOGNO (FUNZIONANTE) ---
+                # --- A. FILTRO FABBISOGNO ---
                 fabb_df = data["fabbisogno"].copy()
                 fabb_df['date_pure'] = fabb_df['Data'].apply(to_date_safe)
                 fabb_oggi = fabb_df[fabb_df['date_pure'] == data_tab]
                 
-                # --- 2. FILTRO DISPONIBILITÀ ---
+                # --- B. FILTRO DISPONIBILITÀ (Assenze/Permessi) ---
                 disp_df = data["disp"].copy()
                 disp_df['date_pure'] = disp_df['Data'].apply(to_date_safe)
-                disp_oggi = disp_df[disp_df['date_pure'] == data_tab]
+                # Prendiamo solo le segnalazioni per OGGI che NON sono "Disponibile"
+                assenze_oggi = disp_df[(disp_df['date_pure'] == data_tab) & 
+                                       (~disp_df["Stato"].str.contains("Disponibile", case=False, na=False))]
                 
-                # --- 3. LOGICA STAFF ---
-                staff_totale = data["addetti"].copy()
-                
-                # Normalizzazione colonne critiche
-                staff_totale["Nome"] = staff_totale["Nome"].astype(str).str.strip().str.upper()
-                staff_totale["Cognome"] = staff_totale["Cognome"].astype(str).str.strip().str.upper()
-                staff_totale["Riposo_Norm"] = staff_totale["GiornoRiposoSettimanale"].astype(str).str.strip().str.upper()
-                staff_totale["UID"] = staff_totale["Nome"] + " " + staff_totale["Cognome"]
+                # Creiamo lista nomi di chi è assente oggi (Normalizzata)
+                lista_nomi_assenti = (assenze_oggi["Nome"].astype(str).str.strip().str.upper() + 
+                                      " " + 
+                                      assenze_oggi["Cognome"].astype(str).str.strip().str.upper()).tolist()
 
-                # A. ESCLUSIONE RIPOSO FISSO
-                # Teniamo solo chi NON ha il riposo oggi
-                staff_presente = staff_totale[staff_totale["Riposo_Norm"] != g_sett_oggi].copy()
+                # --- C. LOGICA STAFF PRESENTE (Ricalcolata per ogni Tab) ---
+                staff_base = data["addetti"].copy()
                 
-                # B. ESCLUSIONE ASSENZE DA TABELLA DISPONIBILITÀ
-                if not disp_oggi.empty:
-                    disp_oggi["UID"] = (disp_oggi["Nome"].astype(str).str.strip().str.upper() + 
-                                       " " + 
-                                       disp_oggi["Cognome"].astype(str).str.strip().str.upper())
-                    
-                    # Identifichiamo chi ha stati come "ASSENTE", "PERMESSO", ecc. (Tutto tranne Disponibile)
-                    esclusi_list = disp_oggi[~disp_oggi["Stato"].str.contains("Disponibile", case=False, na=False)]["UID"].tolist()
-                    
-                    # Filtriamo lo staff presente togliendo gli esclusi
-                    staff_presente = staff_presente[~staff_presente["UID"].isin(esclusi_list)]
+                # 1. Normalizziamo i dati dello staff
+                staff_base["Nome_Norm"] = staff_base["Nome"].astype(str).str.strip().str.upper()
+                staff_base["Cognome_Norm"] = staff_base["Cognome"].astype(str).str.strip().str.upper()
+                staff_base["Full_Name"] = staff_base["Nome_Norm"] + " " + staff_base["Cognome_Norm"]
+                staff_base["Riposo_Norm"] = staff_base["GiornoRiposoSettimanale"].astype(str).str.strip().str.upper()
 
-                # --- 4. RENDER UI ---
+                # 2. APPLICHIAMO I FILTRI DI DATA
+                # FILTRO 1: Togliamo chi ha il riposo fisso in questo giorno
+                staff_filtrato = staff_base[staff_base["Riposo_Norm"] != nome_giorno_oggi].copy()
+                
+                # FILTRO 2: Togliamo chi è nella lista assenti di oggi
+                staff_filtrato = staff_filtrato[~staff_filtrato["Full_Name"].isin(lista_nomi_assenti)]
+
+                # --- D. VISUALIZZAZIONE ---
                 cols = st.columns(3)
                 for i, post in enumerate(lista_postazioni):
-                    # Filtro per mansione (normalizzato)
-                    presenti_post = staff_presente[staff_presente["Mansione"].astype(str).str.strip() == post.strip()]
+                    # Filtro finale per mansione
+                    presenti_post = staff_filtrato[staff_filtrato["Mansione"].astype(str).str.strip() == post.strip()]
                     
+                    # Fabbisogno
                     f_row = fabb_oggi[fabb_oggi["Mansione"].astype(str).str.strip() == post.strip()]
-                    
                     try:
                         req = int(f_row["Quantita"].iloc[0]) if not f_row.empty else 0
                     except:
                         req = 0
                     
                     num_pres = len(presenti_post)
-                    color = "#29b05c" if num_pres >= req and req > 0 else "#ff4b4b" if num_pres < req else "#808080"
-                    if req == 0: color = "#808080"
+                    
+                    # Colore
+                    if req <= 0: color = "#808080"
+                    elif num_pres >= req: color = "#29b05c"
+                    else: color = "#ff4b4b"
 
                     with cols[i % 3]:
                         st.markdown(f"""
@@ -198,7 +200,7 @@ if menu == "📊 Dashboard":
                                 <div style="padding: 15px; text-align: center;">
                                     <div style="font-size: 24px; font-weight: bold;">{num_pres} / {req}</div>
                                     <div style="margin-top: 10px; text-align: left; border-top: 1px solid #eee; padding-top: 5px; height: 120px; overflow-y: auto;">
-                                        {"".join([f"<div style='font-size: 12px; border-bottom: 1px solid #f0f0f0;'>• {r['Nome']} {r['Cognome']}</div>" for _, r in presenti_post.iterrows()]) if not presenti_post.empty else "<div style='color:gray; font-size:11px;'>Nessuno in servizio</div>"}
+                                        {"".join([f"<div style='font-size: 12px; border-bottom: 1px solid #f0f0f0; padding: 2px 0;'>• {r['Nome']} {r['Cognome']}</div>" for _, r in presenti_post.iterrows()]) if not presenti_post.empty else "<div style='color:gray; font-size:11px;'>Nessuno in servizio</div>"}
                                     </div>
                                 </div>
                             </div>
