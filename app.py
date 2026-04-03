@@ -119,6 +119,7 @@ if menu == "📊 Dashboard":
     st.header("Stato Occupazione Postazioni")
     input_d = st.date_input("Inizio visualizzazione (settimana):", default_date)
     
+    # Assicuriamoci che sia un oggetto date
     data_inizio = input_d
     date_range = [data_inizio + timedelta(days=i) for i in range(7)]
     date_aperte = [d for d in date_range if data_apertura <= d <= data_chiusura]
@@ -129,61 +130,70 @@ if menu == "📊 Dashboard":
         tabs = st.tabs([d.strftime("%d/%m") for d in date_aperte])
         for idx, t in enumerate(tabs):
             with t:
-                curr_date_str = date_aperte[idx].strftime("%Y-%m-%d")
-                g_sett = giorni_ita[date_aperte[idx].weekday()]
+                curr_date = date_aperte[idx]
+                # Creiamo diversi formati di confronto per sicurezza
+                str_iso = curr_date.strftime("%Y-%m-%d")
+                g_sett = giorni_ita[curr_date.weekday()]
                 
-                # --- PRE-PROCESSAMENTO SICURO ---
-                # Fabbisogno
-                df_fabb = data["fabbisogno"].copy()
-                if not df_fabb.empty:
-                    # errors='coerce' evita il crash se ci sono dati sporchi
-                    df_fabb["Data"] = pd.to_datetime(df_fabb["Data"], errors='coerce')
-                    df_fabb = df_fabb.dropna(subset=["Data"])
-                    df_fabb["Data"] = df_fabb["Data"].dt.strftime("%Y-%m-%d")
+                # --- FILTRO FABBISOGNO ---
+                # Usiamo una ricerca flessibile che funzioni sia con stringhe che con datetime
+                fabb_df = data["fabbisogno"].copy()
+                fabb_df["Data_Str"] = pd.to_datetime(fabb_df["Data"], errors='coerce').dt.strftime("%Y-%m-%d")
+                fabb_oggi = fabb_df[fabb_df["Data_Str"] == str_iso]
                 
-                # Disponibilità
-                df_disp = data["disp"].copy()
-                if not df_disp.empty:
-                    df_disp["Data"] = pd.to_datetime(df_disp["Data"], errors='coerce')
-                    df_disp = df_disp.dropna(subset=["Data"])
-                    df_disp["Data"] = df_disp["Data"].dt.strftime("%Y-%m-%d")
-
-                # --- FILTRAGGIO ---
-                fabb_oggi = df_fabb[df_fabb["Data"] == curr_date_str]
-                disp_oggi = df_disp[df_disp["Data"] == curr_date_str]
+                # --- FILTRO DISPONIBILITÀ ---
+                disp_df = data["disp"].copy()
+                disp_df["Data_Str"] = pd.to_datetime(disp_df["Data"], errors='coerce').dt.strftime("%Y-%m-%d")
+                disp_oggi = disp_df[disp_df["Data_Str"] == str_iso]
                 
-                staff_presente = data["addetti"].copy()
-                # 1. Escludi riposo fisso
-                staff_presente = staff_presente[staff_presente["GiornoRiposoSettimanale"] != g_sett]
+                # --- LOGICA PRESENZE ---
+                staff_totale = data["addetti"].copy()
                 
-                # 2. Escludi chi ha segnalato assenza/permesso
+                # 1. Escludiamo chi ha il RIPOSO FISSO (confronto stringa giorno)
+                staff_presente = staff_totale[staff_totale["GiornoRiposoSettimanale"] != g_sett].copy()
+                
+                # 2. Escludiamo chi ha inserito assenze in 'disp'
                 if not disp_oggi.empty:
-                    disp_oggi["Full"] = disp_oggi["Nome"].astype(str).str.strip().str.upper() + " " + disp_oggi["Cognome"].astype(str).str.strip().str.upper()
-                    staff_presente["Full"] = staff_presente["Nome"].astype(str).str.strip().str.upper() + " " + staff_presente["Cognome"].astype(str).str.strip().str.upper()
+                    # Creiamo chiavi di confronto pulite
+                    disp_oggi["Key"] = (disp_oggi["Nome"].astype(str) + disp_oggi["Cognome"].astype(str)).str.replace(" ", "").str.upper()
+                    staff_presente["Key"] = (staff_presente["Nome"].astype(str) + staff_presente["Cognome"].astype(str)).str.replace(" ", "").str.upper()
                     
-                    non_disponibili = disp_oggi[~disp_oggi["Stato"].str.contains("Disponibile", case=False, na=False)]["Full"].tolist()
-                    staff_presente = staff_presente[~staff_presente["Full"].isin(non_disponibili)]
+                    # Prendiamo solo chi NON è "Disponibile" (quindi Malattia, Assente, Permesso, ecc.)
+                    nomi_assenti = disp_oggi[~disp_oggi["Stato"].str.contains("Disponibile", case=False, na=False)]["Key"].tolist()
+                    staff_presente = staff_presente[~staff_presente["Key"].isin(nomi_assenti)]
                 
-                # --- UI ---
+                # --- RENDER UI ---
                 cols = st.columns(3)
                 for i, post in enumerate(lista_postazioni):
-                    presenti_post = staff_presente[staff_presente["Mansione"] == post]
+                    # Filtriamo lo staff per questa mansione
+                    addetti_postazione = staff_presente[staff_presente["Mansione"] == post]
+                    
+                    # Troviamo il fabbisogno per questa mansione
                     f_row = fabb_oggi[fabb_oggi["Mansione"] == post]
+                    # Se f_row è vuoto o NaN, mettiamo 0
+                    try:
+                        req = int(f_row["Quantita"].iloc[0]) if not f_row.empty else 0
+                    except:
+                        req = 0
+                        
+                    num_pres = len(addetti_postazione)
                     
-                    req = int(f_row["Quantita"].iloc[0]) if not f_row.empty else 0
-                    num_pres = len(presenti_post)
-                    
-                    color = "#29b05c" if num_pres >= req and req > 0 else "#ff4b4b" if num_pres < req else "#808080"
-                    if req == 0: color = "#808080"
+                    # Colore dinamico
+                    if req == 0: 
+                        color = "#808080" # Grigio se non serve nessuno
+                    elif num_pres >= req: 
+                        color = "#29b05c" # Verde se coperto
+                    else: 
+                        color = "#ff4b4b" # Rosso se sotto organico
 
                     with cols[i % 3]:
                         st.markdown(f"""
-                            <div style="border: 1px solid #ddd; border-radius: 10px; margin-bottom: 20px; background: white;">
-                                <div style="background: {color}; color: white; padding: 10px; border-radius: 10px 10px 0 0; text-align: center; font-weight: bold;">{post}</div>
+                            <div style="border: 1px solid #ddd; border-radius: 10px; margin-bottom: 20px; background: white; box-shadow: 2px 2px 5px rgba(0,0,0,0.05);">
+                                <div style="background: {color}; color: white; padding: 10px; border-radius: 10px 10px 0 0; text-align: center; font-weight: bold; font-size: 14px;">{post.upper()}</div>
                                 <div style="padding: 15px; text-align: center;">
-                                    <span style="font-size: 22px; font-weight: bold;">{num_pres} / {req}</span>
-                                    <div style="margin-top: 10px; text-align: left; max-height: 120px; overflow-y: auto;">
-                                        {"".join([f"<div style='font-size: 13px; border-bottom: 1px solid #eee;'>• {r['Nome']} {r['Cognome']}</div>" for _, r in presenti_post.iterrows()]) if not presenti_post.empty else "<div style='color:gray; font-size:12px;'>Nessuno</div>"}
+                                    <div style="font-size: 26px; font-weight: bold; color: #333;">{num_pres} <span style="font-size: 18px; color: #888; font-weight: normal;">/ {req}</span></div>
+                                    <div style="margin-top: 12px; text-align: left; border-top: 1px solid #eee; padding-top: 8px; min-height: 50px;">
+                                        {"".join([f"<div style='font-size: 13px; color: #555; padding: 2px 0;'>• {r['Nome']} {r['Cognome']}</div>" for _, r in addetti_postazione.iterrows()]) if not addetti_postazione.empty else "<div style='color:#bbb; font-style:italic; font-size:12px;'>Nessun presente</div>"}
                                     </div>
                                 </div>
                             </div>
