@@ -126,73 +126,72 @@ if menu == "📊 Dashboard":
     if not date_aperte:
         st.warning(f"⚠️ Parco CHIUSO nel periodo selezionato.")
     else:
-        # Funzione per normalizzare le stringhe (toglie spazi, accenti comuni e rende maiuscolo)
-        def clean_str(s):
-            if pd.isna(s): return ""
-            return str(s).strip().upper().replace("È", "E").replace("Ì", "I")
-
-        # Funzione per date sicure
-        def to_date_pure(val):
+        # Funzioni helper per pulizia e confronto
+        def to_date_only(val):
             try: return pd.to_datetime(val).date()
             except: return None
+
+        def norm(s):
+            if pd.isna(s): return ""
+            return str(s).strip().upper()
 
         tabs = st.tabs([d.strftime("%d/%m") for d in date_aperte])
         for idx, t in enumerate(tabs):
             with t:
-                # 1. DATA E GIORNO DELLA TAB
+                # 1. PARAMETRI DEL GIORNO SELEZIONATO NELLA TAB
                 d_tab = date_aperte[idx]
-                giorno_sett_tab = clean_str(giorni_ita[d_tab.weekday()]) # Es: "LUNEDI"
+                giorno_sett_oggi = norm(giorni_ita[d_tab.weekday()])
                 
-                # 2. FILTRO FABBISOGNO (Basato su data_tab)
+                # 2. FILTRO FABBISOGNO
                 df_f = data["fabbisogno"].copy()
-                df_f['d_pure'] = df_f['Data'].apply(to_date_pure)
+                df_f['d_pure'] = df_f['Data'].apply(to_date_only)
                 fabb_oggi = df_f[df_f['d_pure'] == d_tab]
                 
-                # 3. FILTRO DISPONIBILITÀ (Assenze/Permessi/Malattie)
+                # 3. IDENTIFICAZIONE ASSENTI (Tabella Disponibilità)
                 df_dis = data["disp"].copy()
-                df_dis['d_pure'] = df_dis['Data'].apply(to_date_pure)
-                # Troviamo chi ha una segnalazione per OGGI che NON sia "Disponibile"
-                non_disp_oggi = df_dis[(df_dis['d_pure'] == d_tab) & 
-                                       (~df_dis["Stato"].str.contains("Disponibile", case=False, na=False))]
+                df_dis['d_pure'] = df_dis['Data'].apply(to_date_only)
+                disp_oggi = df_dis[df_dis['d_pure'] == d_tab]
                 
-                # Lista "Nomi Neri" per oggi
-                nomi_esclusi = (non_disp_oggi["Nome"].apply(clean_str) + 
-                                non_disp_oggi["Cognome"].apply(clean_str)).tolist()
+                # Chiunque abbia uno stato che NON sia "Disponibile" viene segnato come assente
+                stati_esclusione = ["NON DISPONIBILE", "MALATTIA", "ASSENTE", "PERMESSO"]
+                nomi_assenti = disp_oggi[
+                    disp_oggi["Stato"].apply(norm).isin(stati_esclusione) | 
+                    (~disp_oggi["Stato"].apply(norm).contains("DISPONIBILE", na=False))
+                ]
+                lista_nera_nomi = (nomi_assenti["Nome"].apply(norm) + nomi_assenti["Cognome"].apply(norm)).tolist()
 
-                # 4. COSTRUZIONE LISTA PRESENTI (Reset totale per ogni Tab)
+                # 4. COSTRUZIONE LISTA PRESENTI (FILTRAGGIO RESTRITTIVO)
                 staff_base = data["addetti"].copy()
                 
-                # Applichiamo i filtri in sequenza
-                # A. Filtro Mansione (pulizia spazi)
-                staff_base["Mansione_Clean"] = staff_base["Mansione"].apply(clean_str)
-                
-                # B. Filtro Riposo Settimanale (Confronto pulito)
-                staff_base["Riposo_Clean"] = staff_base["GiornoRiposoSettimanale"].apply(clean_str)
-                
-                # TENIAMO solo chi NON riposa oggi
-                presenti = staff_base[staff_base["Riposo_Clean"] != giorno_sett_tab].copy()
-                
-                # C. Filtro Assenze Individuali
-                presenti["Full_ID"] = presenti["Nome"].apply(clean_str) + presenti["Cognome"].apply(clean_str)
-                presenti = presenti[~presenti["Full_ID"].isin(nomi_esclusi)]
+                # Normalizziamo per il confronto
+                staff_base["ID_UNICO"] = staff_base["Nome"].apply(norm) + staff_base["Cognome"].apply(norm)
+                staff_base["RIPOSO_NORM"] = staff_base["GiornoRiposoSettimanale"].apply(norm)
 
-                # 5. RENDER UI
+                # --- APPLICAZIONE FILTRI COMBINATI ---
+                # Un addetto è presente solo se:
+                # IL SUO RIPOSO != GIORNO DI OGGI  --- E ---  IL SUO NOME NON È NEI "NERI"
+                presenti_effettivi = staff_base[
+                    (staff_base["RIPOSO_NORM"] != giorno_sett_oggi) & 
+                    (~staff_base["ID_UNICO"].isin(lista_nera_nomi))
+                ].copy()
+
+                # 5. RENDERING DELLE CARD
                 cols = st.columns(3)
                 for i, post in enumerate(lista_postazioni):
-                    p_clean = clean_str(post)
-                    # Filtro addetti per questa postazione
-                    staff_post = presenti[presenti["Mansione_Clean"] == p_clean]
+                    p_norm = norm(post)
+                    # Addetti filtrati per questa specifica postazione
+                    staff_postazione = presenti_effettivi[presenti_effettivi["Mansione"].apply(norm) == p_norm]
                     
-                    # Recupero fabbisogno
-                    f_row = fabb_oggi[fabb_oggi["Mansione"].apply(clean_str) == p_clean]
+                    # Fabbisogno
+                    f_row = fabb_oggi[fabb_oggi["Mansione"].apply(norm) == p_norm]
                     try:
                         req = int(f_row["Quantita"].iloc[0]) if not f_row.empty else 0
                     except:
                         req = 0
                     
-                    num_pres = len(staff_post)
+                    num_pres = len(staff_postazione)
                     
-                    # Colore Stato
+                    # Colore dinamico
                     if req <= 0: color = "#808080"
                     elif num_pres >= req: color = "#29b05c"
                     else: color = "#ff4b4b"
@@ -200,13 +199,13 @@ if menu == "📊 Dashboard":
                     with cols[i % 3]:
                         st.markdown(f"""
                             <div style="border: 1px solid #ddd; border-radius: 10px; margin-bottom: 20px; background: white; box-shadow: 2px 2px 5px rgba(0,0,0,0.05);">
-                                <div style="background: {color}; color: white; padding: 10px; border-radius: 10px 10px 0 0; text-align: center; font-weight: bold;">
+                                <div style="background: {color}; color: white; padding: 10px; border-radius: 10px 10px 0 0; text-align: center; font-weight: bold; font-size: 14px;">
                                     {post.upper()}
                                 </div>
                                 <div style="padding: 15px; text-align: center;">
-                                    <div style="font-size: 26px; font-weight: bold; color:#333;">{num_pres} / {req}</div>
+                                    <div style="font-size: 26px; font-weight: bold; color: #333;">{num_pres} <span style="font-size: 18px; color: #888; font-weight: normal;">/ {req}</span></div>
                                     <div style="margin-top: 10px; text-align: left; border-top: 1px solid #eee; padding-top: 8px; height: 130px; overflow-y: auto;">
-                                        {"".join([f"<div style='font-size: 13px; color:#444; border-bottom:1px solid #f9f9f9; padding:2px 0;'>• {r['Nome']} {r['Cognome']}</div>" for _, r in staff_post.iterrows()]) if not staff_post.empty else "<div style='color:#999; font-size:12px; font-style:italic;'>Nessuno in servizio</div>"}
+                                        {"".join([f"<div style='font-size: 13px; color: #444; border-bottom: 1px solid #f9f9f9; padding: 2px 0;'>• {r['Nome']} {r['Cognome']}</div>" for _, r in staff_postazione.iterrows()]) if not staff_postazione.empty else "<div style='color:#999; font-size:12px; font-style:italic;'>Nessuno disponibile</div>"}
                                     </div>
                                 </div>
                             </div>
