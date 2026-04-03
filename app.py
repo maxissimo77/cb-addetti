@@ -231,7 +231,7 @@ elif menu == "📅 Area Disponibilità Staff":
             old = data["disp"][~((data["disp"]["Nome"] == row_d['Nome']) & (data["disp"]["Cognome"] == row_d['Cognome']) & (data["disp"]["Data"].astype(str).isin(d_list)))]
             conn.update(worksheet="Disponibilita", data=pd.concat([old, nuovi], ignore_index=True)); st.cache_data.clear(); st.rerun()
 
-# --- 5. GESTIONE ANAGRAFICA (AGGIORNATA) ---
+# --- 5. GESTIONE ANAGRAFICA ---
 elif menu == "👥 Gestione Anagrafica":
     st.header("Anagrafica Personale")
     if "editing_id" not in st.session_state: st.session_state["editing_id"] = None
@@ -262,7 +262,7 @@ elif menu == "👥 Gestione Anagrafica":
                 disp_addetto = data["disp"][(data["disp"]["Nome"] == r['Nome']) & (data["disp"]["Cognome"] == r['Cognome'])]
                 conteggi = disp_addetto["Stato"].value_counts()
                 
-                # MODIFICA RICHIESTA: Taggato "Disponibile", rimosso "NON Disp", corretta label "Assente"
+                # MODIFICA RICHIESTA: Font ingrandito (15px) e grassetto
                 sum_str = f"✅ Disponibile: {conteggi.get('Disponibile', 0)} | 🔵 Permessi: {conteggi.get('Permesso', 0)} | ⚫ Assente: {conteggi.get('Assente', 0)} | 🔘 Malattia: {conteggi.get('Malattia', 0)}"
 
                 with st.container():
@@ -271,7 +271,10 @@ elif menu == "👥 Gestione Anagrafica":
                     c1.markdown(f"**{r['Nome']} {r['Cognome']}**{' 🚩' if has_cont else ''}")
                     c2.caption(f"{r['Mansione']} | Riposo: {r['GiornoRiposoSettimanale']}")
                     if c3.button("✏️", key=f"ed_{idx}"): st.session_state["editing_id"] = idx; st.rerun()
-                    st.markdown(f"<div style='font-size: 11px; color: #666; margin-top: -10px; margin-bottom: 5px;'>{sum_str}</div>", unsafe_allow_html=True)
+                    
+                    # RIGA MODIFICATA (Font ingrandito a 15px e Bold)
+                    st.markdown(f"<div style='font-size: 15px; font-weight: bold; color: #444; margin-top: -10px; margin-bottom: 5px;'>{sum_str}</div>", unsafe_allow_html=True)
+                    
                     if has_cont:
                         with st.expander("Vedi contestazioni"): st.warning(r['Contestazioni'])
                     st.divider()
