@@ -50,7 +50,7 @@ def get_data():
         "disp": conn.read(worksheet="Disponibilita"),
         "fabbisogno": conn.read(worksheet="Fabbisogno"),
         "postazioni": conn.read(worksheet="Postazioni"),
-        "config": conn.read(worksheet="Config", ttl=0)
+        "config": conn.read(worksheet="Config", ttl=10)
     }
 
 data = get_data()
