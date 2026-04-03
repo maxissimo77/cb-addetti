@@ -74,8 +74,9 @@ def genera_mini_calendario(df_persona, riposo_fisso, anno, mese):
     nomi_mesi_ita = {5: "MAGGIO", 6: "GIUGNO", 7: "LUGLIO", 8: "AGOSTO", 9: "SETTEMBRE"}
     st.markdown(f"<div style='text-align: center; background-color: #1f77b4; color: white; padding: 5px; border-radius: 5px; margin-bottom: 5px;'><b>{nomi_mesi_ita.get(mese, 'Mese')}</b></div>", unsafe_allow_html=True)
     
-    # 1. Ricaviamo l'indice del riposo (Lunedì=0, Domenica=6)
-    idx_riposo_fisso = mappa_giorni.get(riposo_fisso, -1)
+    # PULIZIA STRINGA RIPOSO: " lunedì" -> "Lunedì"
+    riposo_pulito = str(riposo_fisso).strip().capitalize()
+    idx_riposo_fisso = mappa_giorni.get(riposo_pulito, -1)
     
     cal = calendar.monthcalendar(anno, mese)
     html = '<table style="width:100%; border-collapse: collapse; text-align: center; font-size: 11px; table-layout: fixed; border: 1px solid #ddd;">'
@@ -88,19 +89,22 @@ def genera_mini_calendario(df_persona, riposo_fisso, anno, mese):
                 html += '<td style="border:1px solid rgba(128,128,128,0.1);"></td>'
             else:
                 curr_d = datetime(anno, mese, day).date()
-                d_str = f"{anno}-{mese:02d}-{day:02d}"
+                d_str = curr_d.strftime("%Y-%m-%d") # Formato standard ISO
                 is_open = data_apertura <= curr_d <= data_chiusura
                 
-                # Default: trasparente
-                bg, tx = "transparent", "inherit"
                 label = str(day)
+                bg, tx = "transparent", "inherit"
 
                 if not is_open:
                     bg, tx, label = "#f0f0f0", "#bfbfbf", f"<span style='text-decoration: line-through;'>{day}</span>"
                 else:
-                    # Controlla prima se c'è un'eccezione nel database Disponibilità
-                    # Usiamo una ricerca più precisa sulla stringa della data
-                    stato_row = df_persona[df_persona["Data"].astype(str).str.startswith(d_str, na=False)]
+                    # STEP 1: Imposta ARANCIONE se è il giorno di riposo fisso
+                    if i == idx_riposo_fisso:
+                        bg, tx = "#ffa500", "white"
+                    
+                    # STEP 2: Sovrascrivi se c'è uno stato specifico nel DB Disponibilità
+                    # Filtriamo il DF per la data specifica in modo robusto
+                    stato_row = df_persona[df_persona["Data"].astype(str).str.contains(d_str, na=False)]
                     
                     if not stato_row.empty:
                         stato_val = str(stato_row["Stato"].iloc[0]).upper()
@@ -109,10 +113,6 @@ def genera_mini_calendario(df_persona, riposo_fisso, anno, mese):
                         elif "ASSENTE" in stato_val: bg, tx = "#000000", "white"
                         elif "MALATTIA" in stato_val: bg, tx = "#696969", "white"
                         elif "DISPONIBILE" in stato_val: bg, tx = "#29b05c", "white"
-                    
-                    # SE NON c'è un'eccezione nel DB, allora colora di ARANCIONE se è il giorno di riposo
-                    elif i == idx_riposo_fisso:
-                        bg, tx = "#ffa500", "white"
 
                 html += f'<td style="background:{bg}; color:{tx}; border:1px solid rgba(128,128,128,0.2); font-weight:bold;">{label}</td>'
         html += '</tr>'
