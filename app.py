@@ -67,7 +67,7 @@ giorni_ita = list(mappa_giorni.keys())
 opzioni_riposo = giorni_ita + ["Non Definito"]
 lista_postazioni = data["postazioni"]["Nome Postazione"].dropna().unique().tolist() if not data["postazioni"].empty else ["Generico"]
 
-# --- FUNZIONE CALENDARIO CON FILTRO APERTURA ---
+# --- FUNZIONE CALENDARIO ---
 def genera_mini_calendario(df_persona, riposo_fisso, anno, mese):
     nomi_mesi_ita = {5: "MAGGIO", 6: "GIUGNO", 7: "LUGLIO", 8: "AGOSTO", 9: "SETTEMBRE"}
     st.markdown(f"<div style='text-align: center; background-color: #1f77b4; color: white; padding: 5px; border-radius: 5px; margin-bottom: 5px;'><b>{nomi_mesi_ita[mese]}</b></div>", unsafe_allow_html=True)
@@ -75,29 +75,23 @@ def genera_mini_calendario(df_persona, riposo_fisso, anno, mese):
     cal = calendar.monthcalendar(anno, mese)
     html = '<table style="width:100%; border-collapse: collapse; text-align: center; font-size: 11px; table-layout: fixed; border: 1px solid #ddd;">'
     html += '<tr style="background:rgba(128,128,128,0.1);"><th>L</th><th>M</th><th>M</th><th>G</th><th>V</th><th>S</th><th>D</th></tr>'
-    
     for week in cal:
         html += '<tr style="height: 30px;">'
         for i, day in enumerate(week):
             if day == 0: html += '<td style="border:1px solid rgba(128,128,128,0.1);"></td>'
             else:
-                current_date = datetime(anno, mese, day).date()
+                curr_d = datetime(anno, mese, day).date()
                 d_str = f"{anno}-{mese:02d}-{day:02d}"
-                
-                # Verifichiamo se il parco è aperto
-                is_open = data_apertura <= current_date <= data_chiusura
-                
+                is_open = data_apertura <= curr_d <= data_chiusura
                 if not is_open:
                     bg, tx, label = "#e0e0e0", "#9e9e9e", f"<del>{day}</del>"
                 else:
-                    stato_serie = df_persona[df_persona["Data"].astype(str).str.contains(d_str, na=False)]["Stato"]
+                    stato_s = df_persona[df_persona["Data"].astype(str).str.contains(d_str, na=False)]["Stato"]
                     bg, tx, label = "transparent", "inherit", str(day)
-                    is_not_available = not stato_serie[stato_serie.astype(str).str.contains("NON", case=False, na=False)].empty
-                    if is_not_available: bg, tx = "#ff4b4b", "white"
-                    else:
-                        if i == idx_riposo_fisso: bg, tx = "#ffa500", "white"
-                        elif not stato_serie.empty: bg, tx = "#29b05c", "white"
-                
+                    if not stato_s[stato_s.astype(str).str.contains("NON", case=False, na=False)].empty:
+                        bg, tx = "#ff4b4b", "white"
+                    elif i == idx_riposo_fisso: bg, tx = "#ffa500", "white"
+                    elif not stato_s.empty: bg, tx = "#29b05c", "white"
                 html += f'<td style="background:{bg}; color:{tx}; border:1px solid rgba(128,128,128,0.2); font-weight:bold;">{label}</td>'
         html += '</tr>'
     st.markdown(html + '</table>', unsafe_allow_html=True)
@@ -119,7 +113,6 @@ if menu == "📊 Dashboard":
     dt_sel = st.date_input("Giorno:", datetime.now())
     if not (data_apertura <= dt_sel <= data_chiusura):
         st.warning("⚠️ Attenzione: Il parco risulta CHIUSO nella data selezionata.")
-    # Logica dashboard... (invariata)
     st.info("Visualizzazione copertura giornaliera basata su fabbisogno e disponibilità.")
 
 elif menu == "📅 Riepilogo Riposi Settimanali":
@@ -127,13 +120,38 @@ elif menu == "📅 Riepilogo Riposi Settimanali":
     for m in lista_postazioni:
         with st.expander(f"📍 {m}", expanded=True):
             add_m = data["addetti"][data["addetti"]["Mansione"] == m]
+            
+            # --- PARTE 1: GIORNI DA LUNEDÌ A DOMENICA ---
             c_rip = st.columns(7)
             for i, g in enumerate(giorni_ita):
                 with c_rip[i]:
                     st.markdown(f"<div style='text-align:center; background:rgba(128,128,128,0.2); padding:5px; border-radius:5px; margin-bottom:12px;'><b>{g}</b></div>", unsafe_allow_html=True)
                     chi = add_m[add_m["GiornoRiposoSettimanale"] == g]
                     for _, r in chi.iterrows():
-                        st.markdown(f"<div style='text-align: center; background-color: rgba(31, 119, 180, 0.1); padding: 10px 5px; border-radius: 5px; margin-top: 8px; margin-bottom: 10px; font-size: 14px; font-weight: 500; border: 1px solid rgba(31, 119, 180, 0.3);'>{r['Nome']} {r['Cognome']}</div>", unsafe_allow_html=True)
+                        # Riquadro azzurro con spaziatura sopra e sotto (margin)
+                        st.markdown(f"""
+                            <div style='text-align: center; background-color: rgba(31, 119, 180, 0.1); 
+                            padding: 10px 5px; border-radius: 5px; margin: 10px 0px; 
+                            font-size: 14px; font-weight: 500; border: 1px solid rgba(31, 119, 180, 0.3);'>
+                                {r['Nome']} {r['Cognome']}
+                            </div>
+                        """, unsafe_allow_html=True)
+            
+            # --- PARTE 2: RIPOSO NON DEFINITO (SOTTO LA GRIGLIA) ---
+            non_def = add_m[add_m["GiornoRiposoSettimanale"] == "Non Definito"]
+            if not non_def.empty:
+                st.markdown("<div style='margin-top: 25px; border-top: 1px solid rgba(128,128,128,0.3); padding-top: 15px;'><b>Riposo Non Definito:</b></div>", unsafe_allow_html=True)
+                # Layout fluido con bordi arancioni
+                html_nd = '<div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; margin-bottom: 20px;">'
+                for _, r in non_def.iterrows():
+                    html_nd += f"""
+                        <div style='border: 2px solid #ffa500; padding: 8px 15px; border-radius: 8px; 
+                        font-weight: bold; background-color: rgba(255, 165, 0, 0.1); display: inline-block;'>
+                            {r['Nome']} {r['Cognome']}
+                        </div>
+                    """
+                html_nd += '</div>'
+                st.markdown(html_nd, unsafe_allow_html=True)
 
 elif menu == "📝 Gestione Riposi Rapida":
     st.header("Gestione Rapida Riposi")
@@ -202,9 +220,8 @@ elif menu == "👥 Gestione Anagrafica":
         idx = st.session_state["editing_id"]
         row = data["addetti"].loc[idx]
         if st.button("⬅️ Torna"): st.session_state["editing_id"] = None; st.rerun()
-        # Visualizzazione mini calendari anche qui per controllo rapido
         df_p_edit = data["disp"][(data["disp"]["Nome"] == row['Nome']) & (data["disp"]["Cognome"] == row['Cognome'])]
-        cc = st.columns(5); 
+        cc = st.columns(5)
         for i_m, m_v in enumerate([5,6,7,8,9]): 
             with cc[i_m]: genera_mini_calendario(df_p_edit, row['GiornoRiposoSettimanale'], 2026, m_v)
         with st.form("edit"):
@@ -225,19 +242,15 @@ elif menu == "👥 Gestione Anagrafica":
 
 elif menu == "⚙️ Impostazioni Stagione":
     st.header("Configurazione Stagione Operativa")
-    st.write("Definisci le date in cui il parco Caribe Bay è aperto al pubblico.")
     with st.form("set_season"):
         nuova_ap = st.date_input("Data Apertura Parco:", data_apertura)
         nuova_ch = st.date_input("Data Chiusura Parco:", data_chiusura)
         if st.form_submit_button("Salva Date Stagione"):
-            # Aggiorniamo le righe speciali nel foglio Config
             conf_agg = data["config"].copy()
             conf_agg.loc[conf_agg["Ruolo"] == "Apertura", "Password"] = str(nuova_ap)
             conf_agg.loc[conf_agg["Ruolo"] == "Chiusura", "Password"] = str(nuova_ch)
             conn.update(worksheet="Config", data=conf_agg)
-            st.cache_data.clear()
-            st.success("Date stagione aggiornate!")
-            st.rerun()
+            st.cache_data.clear(); st.success("Date stagione aggiornate!"); st.rerun()
 
 elif menu == "🚩 Gestione Postazioni":
     st.header("Postazioni")
@@ -253,9 +266,7 @@ elif menu == "🔑 Gestione Password":
         ap = st.text_input("Admin", value=str(data["config"][data["config"]["Ruolo"]=="Admin"]["Password"].values[0]))
         up = st.text_input("User", value=str(data["config"][data["config"]["Ruolo"]=="User"]["Password"].values[0]))
         if st.form_submit_button("Aggiorna"):
-            # Manteniamo anche le date stagione durante l'aggiornamento password
             new_conf = data["config"].copy()
             new_conf.loc[new_conf["Ruolo"] == "Admin", "Password"] = ap
             new_conf.loc[new_conf["Ruolo"] == "User", "Password"] = up
-            conn.update(worksheet="Config", data=new_conf)
-            st.success("Salvate!")
+            conn.update(worksheet="Config", data=new_conf); st.success("Salvate!"); st.rerun()
