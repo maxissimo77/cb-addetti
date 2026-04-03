@@ -104,9 +104,11 @@ if st.sidebar.button("Logout"):
     for key in list(st.session_state.keys()): del st.session_state[key]
     st.rerun()
 
-# --- 1. DASHBOARD ---
+# --- 1. DASHBOARD (SPOSTATA TABELLA PRESENZE IN ALTO) ---
 if menu == "📊 Dashboard":
     st.header("Stato Occupazione Postazioni")
+    
+    # Selezione Data per la visualizzazione
     input_d = st.date_input("Inizio visualizzazione (settimana):", default_date)
     data_inizio = input_d.date() if hasattr(input_d, 'date') else input_d
     date_range = [data_inizio + timedelta(days=i) for i in range(7)]
@@ -115,28 +117,37 @@ if menu == "📊 Dashboard":
     if not date_aperte:
         st.warning(f"⚠️ Parco CHIUSO nel periodo selezionato. Stagione: {data_apertura.strftime('%d/%m')} - {data_chiusura.strftime('%d/%m')}")
     else:
+        # I Tab sono le date della settimana
         tabs = st.tabs([d.strftime("%d/%m") for d in date_aperte])
         for idx, t in enumerate(tabs):
             with t:
                 curr_date = date_aperte[idx]
                 g_sett = giorni_ita[curr_date.weekday()]
+                
+                # Caricamento dati per il giorno specifico
                 fabb = data["fabbisogno"][data["fabbisogno"]["Data"].astype(str).str.contains(str(curr_date), na=False)]
                 disp = data["disp"][data["disp"]["Data"].astype(str).str.contains(str(curr_date), na=False)]
                 staff_totale = data["addetti"].copy()
+                
+                # Filtro chi è in riposo fisso
                 staff_presente = staff_totale[staff_totale["GiornoRiposoSettimanale"] != g_sett]
                 
+                # Filtro chi ha segnato "NON Disponibile"
                 if not disp.empty:
                     disp['Key'] = disp['Nome'] + " " + disp['Cognome']
                     non_disp_keys = disp[disp["Stato"].astype(str).str.contains("NON", case=False, na=False)]['Key'].tolist()
                     staff_presente['Key'] = staff_presente['Nome'] + " " + staff_presente['Cognome']
                     staff_presente = staff_presente[~staff_presente['Key'].isin(non_disp_keys)]
                 
+                # Visualizzazione Card Postazioni (ORA IN ALTO)
                 cols = st.columns(3)
                 for i, post in enumerate(lista_postazioni):
                     presenti = staff_presente[staff_presente["Mansione"] == post]
                     f_row = fabb[fabb["Mansione"] == post]
                     req = int(f_row["Quantita"].iloc[0]) if not f_row.empty else 0
                     num_pres = len(presenti)
+                    
+                    # Logica colori
                     color_status = "#29b05c" if num_pres >= req and req > 0 else "#ff4b4b" if num_pres < req else "#1f77b4"
                     if req == 0: color_status = "#808080"
 
@@ -227,7 +238,7 @@ elif menu == "📅 Area Disponibilità Staff":
             old = data["disp"][~((data["disp"]["Nome"] == row_d['Nome']) & (data["disp"]["Cognome"] == row_d['Cognome']) & (data["disp"]["Data"].astype(str).isin(d_list)))]
             conn.update(worksheet="Disponibilita", data=pd.concat([old, nuovi], ignore_index=True)); st.cache_data.clear(); st.rerun()
 
-# --- 5. GESTIONE ANAGRAFICA (MODIFICATA PER CONTESTAZIONI) ---
+# --- 5. GESTIONE ANAGRAFICA ---
 elif menu == "👥 Gestione Anagrafica":
     st.header("Anagrafica Personale")
     if "editing_id" not in st.session_state: st.session_state["editing_id"] = None
@@ -243,18 +254,15 @@ elif menu == "👥 Gestione Anagrafica":
             em = c1.selectbox("Mansione", lista_postazioni, index=lista_postazioni.index(row['Mansione']) if row['Mansione'] in lista_postazioni else 0)
             er = c2.selectbox("Riposo", opzioni_riposo, index=opzioni_riposo.index(row['GiornoRiposoSettimanale']) if row['GiornoRiposoSettimanale'] in opzioni_riposo else 7)
             
-            # Campo Contestazioni (Assume che esista la colonna nel foglio)
             val_cont = str(row['Contestazioni']) if 'Contestazioni' in row and pd.notna(row['Contestazioni']) else ""
-            e_cont = st.text_area("Lettere di Contestazione (Date e Note)", value=val_cont, help="Inserisci qui le date e i motivi delle contestazioni ricevute.")
+            e_cont = st.text_area("Lettere di Contestazione (Date e Note)", value=val_cont)
             
             cb1, cb2, _ = st.columns([1,1,2])
             if cb1.form_submit_button("💾 Salva Modifiche"):
-                # Aggiorna il DataFrame assicurandoti che la colonna esista
                 new_data = [en, ec, em, er, e_cont]
                 cols = ["Nome", "Cognome", "Mansione", "GiornoRiposoSettimanale", "Contestazioni"]
                 for i, col in enumerate(cols):
                     data["addetti"].at[idx, col] = new_data[i]
-                
                 conn.update(worksheet="Addetti", data=data["addetti"])
                 st.cache_data.clear()
                 st.session_state["editing_id"] = None
@@ -269,10 +277,8 @@ elif menu == "👥 Gestione Anagrafica":
             for idx, r in data["addetti"].iterrows():
                 with st.container():
                     c1, c2, c3 = st.columns([3, 3, 1])
-                    # Alert visivo se ci sono contestazioni
                     has_cont = 'Contestazioni' in r and pd.notna(r['Contestazioni']) and str(r['Contestazioni']).strip() != ""
                     cont_tag = " 🚩" if has_cont else ""
-                    
                     c1.markdown(f"**{r['Nome']} {r['Cognome']}**{cont_tag}")
                     c2.caption(f"{r['Mansione']} | Riposo: {r['GiornoRiposoSettimanale']}")
                     if c3.button("✏️", key=f"ed_{idx}"):
@@ -284,17 +290,13 @@ elif menu == "👥 Gestione Anagrafica":
                     st.divider()
         with t2:
             with st.form("n"):
-                nn = st.text_input("Nome")
-                nc = st.text_input("Cognome")
-                nm = st.selectbox("Mansione", lista_postazioni)
-                nr = st.selectbox("Riposo", opzioni_riposo)
+                nn, nc = st.text_input("Nome"), st.text_input("Cognome")
+                nm, nr = st.selectbox("Mansione", lista_postazioni), st.selectbox("Riposo", opzioni_riposo)
                 ncnt = st.text_area("Eventuali Contestazioni iniziali")
                 if st.form_submit_button("Aggiungi Addetto"):
                     new = pd.DataFrame([{"Nome":nn, "Cognome":nc, "Mansione":nm, "GiornoRiposoSettimanale":nr, "Contestazioni":ncnt}])
                     conn.update(worksheet="Addetti", data=pd.concat([data["addetti"], new], ignore_index=True))
-                    st.cache_data.clear()
-                    st.success("Addetto inserito!")
-                    st.rerun()
+                    st.cache_data.clear(); st.success("Addetto inserito!"); st.rerun()
 
 # --- ALTRE SEZIONI ---
 elif menu == "⚙️ Pianifica Fabbisogno":
