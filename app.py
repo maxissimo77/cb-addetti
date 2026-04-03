@@ -118,7 +118,7 @@ if st.sidebar.button("Logout"):
 if menu == "📊 Dashboard":
     st.header("Stato Occupazione Postazioni")
     input_d = st.date_input("Inizio visualizzazione (settimana):", default_date)
-    data_inizio = input_d.date() if hasattr(input_d, 'date') else input_d
+    data_inizio = input_d # Rimosso .date() se input_d è già un oggetto date
     date_range = [data_inizio + timedelta(days=i) for i in range(7)]
     date_aperte = [d for d in date_range if data_apertura <= d <= data_chiusura]
     
@@ -129,17 +129,30 @@ if menu == "📊 Dashboard":
         for idx, t in enumerate(tabs):
             with t:
                 curr_date = date_aperte[idx]
+                curr_date_str = str(curr_date)
                 g_sett = giorni_ita[curr_date.weekday()]
-                fabb = data["fabbisogno"][data["fabbisogno"]["Data"].astype(str).str.contains(str(curr_date), na=False)]
-                disp = data["disp"][data["disp"]["Data"].astype(str).str.contains(str(curr_date), na=False)]
-                staff_totale = data["addetti"].copy()
-                staff_presente = staff_totale[staff_totale["GiornoRiposoSettimanale"] != g_sett]
                 
+                # 1. Filtro Fabbisogno e Disponibilità per la data corrente
+                fabb = data["fabbisogno"][data["fabbisogno"]["Data"].astype(str) == curr_date_str]
+                disp = data["disp"][data["disp"]["Data"].astype(str) == curr_date_str]
+                
+                # 2. Partiamo da tutto lo staff
+                staff_totale = data["addetti"].copy()
+                
+                # 3. Escludiamo chi ha il RIPOSO FISSO oggi
+                staff_presente = staff_totale[staff_totale["GiornoRiposoSettimanale"] != g_sett].copy()
+                
+                # 4. Escludiamo chi ha inserito Assenze/Permessi/Malattie/Non Disponibile
                 if not disp.empty:
-                    disp['Key'] = disp['Nome'] + " " + disp['Cognome']
-                    non_disp_keys = disp[~disp["Stato"].astype(str).str.contains("Disponibile", case=False, na=False)]['Key'].tolist()
-                    staff_presente['Key'] = staff_presente['Nome'] + " " + staff_presente['Cognome']
-                    staff_presente = staff_presente[~staff_presente['Key'].isin(non_disp_keys)]
+                    # Creiamo una chiave univoca Nome Cognome per il confronto
+                    disp['Key'] = disp['Nome'].get(0, "") + " " + disp['Cognome'].get(0, "") # Fallback safe
+                    disp['Key'] = disp['Nome'].astype(str) + " " + disp['Cognome'].astype(str)
+                    
+                    # Identifichiamo chi NON è disponibile (qualsiasi stato diverso da 'Disponibile')
+                    non_disponibili = disp[~disp["Stato"].astype(str).str.contains("Disponibile", case=False, na=False)]['Key'].tolist()
+                    
+                    staff_presente['Key'] = staff_presente['Nome'].astype(str) + " " + staff_presente['Cognome'].astype(str)
+                    staff_presente = staff_presente[~staff_presente['Key'].isin(non_disponibili)]
                 
                 cols = st.columns(3)
                 for i, post in enumerate(lista_postazioni):
@@ -147,8 +160,11 @@ if menu == "📊 Dashboard":
                     f_row = fabb[fabb["Mansione"] == post]
                     req = int(f_row["Quantita"].iloc[0]) if not f_row.empty else 0
                     num_pres = len(presenti)
+                    
+                    # Logica colori
                     color_status = "#29b05c" if num_pres >= req and req > 0 else "#ff4b4b" if num_pres < req else "#1f77b4"
                     if req == 0: color_status = "#808080"
+                    
                     with cols[i % 3]:
                         st.markdown(f"""
                             <div style="border: 1px solid #ddd; border-radius: 10px; padding: 0px; margin-bottom: 20px; background-color: white; box-shadow: 2px 2px 5px rgba(0,0,0,0.05);">
