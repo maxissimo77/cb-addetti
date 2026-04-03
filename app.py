@@ -175,28 +175,55 @@ elif menu == "📅 Riepilogo Riposi Settimanali":
                 for _, r in non_def.iterrows():
                     html_nd += f"<div style='border: 2px solid #ffa500; padding: 8px 15px; border-radius: 8px; font-weight: bold; background-color: rgba(255, 165, 0, 0.1); color: #333;'>{r['Nome']} {r['Cognome']}</div>"
                 st.markdown(html_nd + '</div>', unsafe_allow_html=True)
-            
-           
-# --- 3. GESTIONE RIPOSI RAPIDA ---
+
+# --- 3. GESTIONE RIPOSI RAPIDA (MODIFICATA CON SPAZIATURE) ---
 elif menu == "📝 Gestione Riposi Rapida":
     st.header("Gestione Rapida Riposi Settimanali")
     df_mod = data["addetti"].copy()
+    
     for m in lista_postazioni:
         add_m = df_mod[df_mod["Mansione"] == m]
         if not add_m.empty:
             st.markdown(f"### 📍 {m}")
+            
+            # Contatori di riepilogo
             conteggi = add_m["GiornoRiposoSettimanale"].value_counts()
             cols_c = st.columns(7)
             for i, g in enumerate(giorni_ita):
                 n_rip = conteggi.get(g, 0)
                 with cols_c[i]: 
                     st.markdown(f"<div style='text-align:center; background:rgba(128,128,128,0.05); border: 1px solid rgba(128,128,128,0.1); border-radius:5px; padding:5px;'><small>{g[:3]}</small><br><b style='color:#1f77b4;'>{n_rip}</b></div>", unsafe_allow_html=True)
+            
+            st.markdown("<div style='margin-top: 15px;'></div>", unsafe_allow_html=True)
+            
+            # Lista dipendenti con spaziatura migliorata
             for idx, row in add_m.iterrows():
-                col_nome, col_scelta = st.columns([2, 1])
-                col_nome.markdown(f"<div style='padding: 8px 0;'>{row['Nome']} <b>{row['Cognome']}</b></div>", unsafe_allow_html=True)
-                df_mod.at[idx, 'GiornoRiposoSettimanale'] = col_scelta.selectbox(f"Riposo {idx}", opzioni_riposo, index=opzioni_riposo.index(row['GiornoRiposoSettimanale']) if row['GiornoRiposoSettimanale'] in opzioni_riposo else 7, key=f"r_rap_{idx}", label_visibility="collapsed")
+                # Wrapper per dare spazio verticale e un separatore visivo
+                with st.container():
+                    col_nome, col_scelta = st.columns([2, 1])
+                    with col_nome:
+                        st.markdown(f"""
+                            <div style="padding-top: 15px; padding-bottom: 10px; border-bottom: 1px solid #f0f2f6;">
+                                <span style="font-size: 16px;">{row['Nome']} <b>{row['Cognome']}</b></span>
+                            </div>
+                        """, unsafe_allow_html=True)
+                    with col_scelta:
+                        # Spazio vuoto per allineare verticalmente la selectbox al testo
+                        st.markdown("<div style='margin-top: 8px;'></div>", unsafe_allow_html=True)
+                        df_mod.at[idx, 'GiornoRiposoSettimanale'] = st.selectbox(
+                            f"Riposo {idx}", 
+                            opzioni_riposo, 
+                            index=opzioni_riposo.index(row['GiornoRiposoSettimanale']) if row['GiornoRiposoSettimanale'] in opzioni_riposo else 7, 
+                            key=f"r_rap_{idx}", 
+                            label_visibility="collapsed"
+                        )
+            st.markdown("<br>", unsafe_allow_html=True)
+
     if st.button("💾 Salva Tutte le Modifiche", type="primary", use_container_width=True):
-        conn.update(worksheet="Addetti", data=df_mod); st.cache_data.clear(); st.success("Salvato!"); st.rerun()
+        conn.update(worksheet="Addetti", data=df_mod)
+        st.cache_data.clear()
+        st.success("Salvato!")
+        st.rerun()
 
 # --- 4. AREA DISPONIBILITÀ ---
 elif menu == "📅 Area Disponibilità Staff":
