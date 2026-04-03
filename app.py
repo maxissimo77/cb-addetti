@@ -15,59 +15,60 @@ pd.options.mode.string_storage = "python"
 # --- CONNESSIONE ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# --- SISTEMA DI LOGIN ---
+# --- CARICAMENTO DATI (CACHE OTTIMIZZATA) ---
+@st.cache_data(ttl=60) # Aumentato a 60 secondi per ridurre drasticamente le API calls
+def get_all_data():
+    try:
+        return {
+            "addetti": conn.read(worksheet="Addetti"),
+            "disp": conn.read(worksheet="Disponibilita"),
+            "fabbisogno": conn.read(worksheet="Fabbisogno"),
+            "postazioni": conn.read(worksheet="Postazioni"),
+            "config": conn.read(worksheet="Config")
+        }
+    except Exception as e:
+        st.error(f"⚠️ Errore di connessione API: {e}")
+        st.stop()
+
+data = get_all_data()
+
+# --- ESTRAZIONE CONFIGURAZIONE ---
+conf_df = data["config"]
+conf_df.columns = conf_df.columns.str.strip()
+
+try:
+    admin_pwd = str(conf_df[conf_df["Ruolo"] == "Admin"]["Password"].values[0])
+    user_pwd = str(conf_df[conf_df["Ruolo"] == "User"]["Password"].values[0])
+    data_apertura = pd.to_datetime(conf_df[conf_df["Ruolo"] == "Apertura"]["Password"].values[0]).date()
+    data_chiusura = pd.to_datetime(conf_df[conf_df["Ruolo"] == "Chiusura"]["Password"].values[0]).date()
+except Exception:
+    admin_pwd, user_pwd = "admin", "staff" # Fallback
+    data_apertura = datetime(2026, 5, 16).date()
+    data_chiusura = datetime(2026, 9, 13).date()
+
+# --- SISTEMA DI LOGIN (Senza chiamate API extra) ---
 def check_password():
     if "role" not in st.session_state:
         st.title("🌊 Caribe Bay - Staff Login")
         pwd_input = st.text_input("Inserisci Password", type="password")
         if st.button("Accedi"):
-            try:
-                conf = conn.read(worksheet="Config", ttl=0)
-                conf.columns = conf.columns.str.strip()
-                admin_pwd = str(conf[conf["Ruolo"] == "Admin"]["Password"].values[0])
-                user_pwd = str(conf[conf["Ruolo"] == "User"]["Password"].values[0])
-                if pwd_input == admin_pwd:
-                    st.session_state["role"] = "Admin"
-                    st.rerun()
-                elif pwd_input == user_pwd:
-                    st.session_state["role"] = "User"
-                    st.rerun()
-                else:
-                    st.error("❌ Password errata.")
-            except Exception:
-                st.error("⚠️ Errore nel foglio 'Config'.")
+            if pwd_input == admin_pwd:
+                st.session_state["role"] = "Admin"
+                st.rerun()
+            elif pwd_input == user_pwd:
+                st.session_state["role"] = "User"
+                st.rerun()
+            else:
+                st.error("❌ Password errata.")
         return False
     return True
 
 if not check_password():
     st.stop()
 
-# --- CARICAMENTO DATI ---
-@st.cache_data(ttl=10)
-def get_data():
-    return {
-        "addetti": conn.read(worksheet="Addetti"),
-        "disp": conn.read(worksheet="Disponibilita"),
-        "fabbisogno": conn.read(worksheet="Fabbisogno"),
-        "postazioni": conn.read(worksheet="Postazioni"),
-        "config": conn.read(worksheet="Config", ttl=10)
-    }
-
-data = get_data()
-
-# --- LOGICA DATE STAGIONE ---
-try:
-    conf_df = data["config"]
-    data_apertura = pd.to_datetime(conf_df[conf_df["Ruolo"] == "Apertura"]["Password"].values[0]).date()
-    data_chiusura = pd.to_datetime(conf_df[conf_df["Ruolo"] == "Chiusura"]["Password"].values[0]).date()
-except Exception:
-    data_apertura = datetime(2026, 5, 16).date()
-    data_chiusura = datetime(2026, 9, 13).date()
-
-# Calcolo valore di default sicuro per i calendari (evita crash se oggi è fuori stagione)
+# --- VARIABILI GLOBALI ---
 oggi = datetime.now().date()
 default_date = oggi if data_apertura <= oggi <= data_chiusura else data_apertura
-
 mappa_giorni = {"Lunedì": 0, "Martedì": 1, "Mercoledì": 2, "Giovedì": 3, "Venerdì": 4, "Sabato": 5, "Domenica": 6}
 giorni_ita = list(mappa_giorni.keys())
 opzioni_riposo = giorni_ita + ["Non Definito"]
@@ -117,7 +118,7 @@ if st.sidebar.button("Logout"):
 if menu == "📊 Dashboard":
     st.header("Dashboard")
     input_d = st.date_input("Inizio visualizzazione:", default_date)
-    data_inizio = input_d.date() if isinstance(input_d, datetime) else input_d
+    data_inizio = input_d.date() if hasattr(input_d, 'date') else input_d
     date_range = [data_inizio + timedelta(days=i) for i in range(7)]
     date_aperte = [d for d in date_range if data_apertura <= d <= data_chiusura]
     
@@ -161,15 +162,8 @@ elif menu == "📅 Riepilogo Riposi Settimanali":
                     chi = add_m[add_m["GiornoRiposoSettimanale"] == g]
                     for _, r in chi.iterrows():
                         st.markdown(f"<div style='text-align: center; background-color: rgba(31, 119, 180, 0.1); padding: 10px 5px; border-radius: 5px; margin: 10px 0px; font-size: 14px; font-weight: 500; border: 1px solid rgba(31, 119, 180, 0.3);'>{r['Nome']} {r['Cognome']}</div>", unsafe_allow_html=True)
-            non_def = add_m[add_m["GiornoRiposoSettimanale"] == "Non Definito"]
-            if not non_def.empty:
-                st.markdown("<div style='margin-top: 25px; border-top: 1px solid rgba(128,128,128,0.3); padding-top: 15px;'><b>Riposo Non Definito:</b></div>", unsafe_allow_html=True)
-                html_nd = '<div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; margin-bottom: 20px;">'
-                for _, r in non_def.iterrows():
-                    html_nd += f"<div style='border: 2px solid #ffa500; padding: 8px 15px; border-radius: 8px; font-weight: bold; background-color: rgba(255, 165, 0, 0.1); color: #333;'>{r['Nome']} {r['Cognome']}</div>"
-                st.markdown(html_nd + '</div>', unsafe_allow_html=True)
 
-# --- 3. GESTIONE RIPOSI RAPIDA (RIPRISTINATI TOTALI) ---
+# --- 3. GESTIONE RIPOSI RAPIDA ---
 elif menu == "📝 Gestione Riposi Rapida":
     st.header("Gestione Rapida Riposi")
     df_mod = data["addetti"].copy()
@@ -202,8 +196,6 @@ elif menu == "📅 Area Disponibilità Staff":
     df_p = data["disp"][(data["disp"]["Nome"] == row_d['Nome']) & (data["disp"]["Cognome"] == row_d['Cognome'])]
     
     st.info(f"Stagione Caribe Bay: dal **{data_apertura.strftime('%d/%m')}** al **{data_chiusura.strftime('%d/%m')}**")
-    st.markdown("""<div style='display: flex; gap: 15px; margin-bottom: 15px;'><div style='background:#f0f0f0; color:#bfbfbf; padding:5px 12px; border-radius:5px; font-size: 14px;'><b>⚪ Parco Chiuso</b></div><div style='background:#ff4b4b; color:white; padding:5px 12px; border-radius:5px; font-size: 14px;'><b>🔴 NON Disponibile</b></div><div style='background:#ffa500; color:white; padding:5px 12px; border-radius:5px; font-size: 14px;'><b>🟠 Riposo Fisso</b></div></div>""", unsafe_allow_html=True)
-    
     c_cal = st.columns(5)
     for idx, m in enumerate([5, 6, 7, 8, 9]):
         with c_cal[idx]: genera_mini_calendario(df_p, row_d['GiornoRiposoSettimanale'], 2026, m)
@@ -218,19 +210,16 @@ elif menu == "📅 Area Disponibilità Staff":
             conn.update(worksheet="Disponibilita", data=pd.concat([old, nuovi], ignore_index=True))
             st.cache_data.clear(); st.rerun()
 
-# --- 5. PIANIFICA FABBISOGNO (FIX ERRORE DATE) ---
+# --- 5. PIANIFICA FABBISOGNO ---
 elif menu == "⚙️ Pianifica Fabbisogno":
     st.header("Gestione Fabbisogno Staff")
     tipo = st.radio("Modalità:", ["Giorno Singolo", "Intervallo"], horizontal=True)
-    
     if tipo == "Giorno Singolo":
-        # Usiamo default_date invece di datetime.now()
         dt = st.date_input("Giorno:", default_date, min_value=data_apertura, max_value=data_chiusura)
         date_list = [dt]
     else:
         dr = st.date_input("Periodo:", value=[], min_value=data_apertura, max_value=data_chiusura)
         date_list = [dr[0] + timedelta(days=x) for x in range((dr[1]-dr[0]).days + 1)] if len(dr) == 2 else []
-
     if date_list:
         f_inputs = {p: st.number_input(f"{p}:", min_value=0, key=f"f_{p}") for p in lista_postazioni}
         if st.button("💾 Salva Fabbisogno", type="primary", use_container_width=True):
@@ -291,7 +280,20 @@ elif menu == "⚙️ Impostazioni Stagione":
             conn.update(worksheet="Config", data=conf_agg)
             st.cache_data.clear(); st.success("Date aggiornate!"); st.rerun()
 
-# --- ALTRE SEZIONI ---
+# --- 8. GESTIONE PASSWORD (OTTIMIZZATA) ---
+elif menu == "🔑 Gestione Password":
+    st.header("Gestione Password")
+    with st.form("pwd"):
+        ap = st.text_input("Password Admin", value=admin_pwd)
+        up = st.text_input("Password User", value=user_pwd)
+        if st.form_submit_button("Aggiorna Password"):
+            new_conf = conf_df.copy()
+            new_conf.loc[new_conf["Ruolo"]=="Admin", "Password"] = ap
+            new_conf.loc[new_conf["Ruolo"]=="User", "Password"] = up
+            conn.update(worksheet="Config", data=new_conf)
+            st.cache_data.clear(); st.success("Password salvate!"); st.rerun()
+
+# --- 9. POSTAZIONI ---
 elif menu == "🚩 Gestione Postazioni":
     st.header("Postazioni")
     np = st.text_input("Nuova")
@@ -299,15 +301,3 @@ elif menu == "🚩 Gestione Postazioni":
         conn.update(worksheet="Postazioni", data=pd.concat([data["postazioni"], pd.DataFrame([{"Nome Postazione": np}])], ignore_index=True))
         st.cache_data.clear(); st.rerun()
     st.table(data["postazioni"])
-
-elif menu == "🔑 Gestione Password":
-    st.header("Password")
-    conf = conn.read(worksheet="Config", ttl=0)
-    with st.form("pwd"):
-        ap = st.text_input("Admin", value=str(conf[conf["Ruolo"]=="Admin"]["Password"].values[0]))
-        up = st.text_input("User", value=str(conf[conf["Ruolo"]=="User"]["Password"].values[0]))
-        if st.form_submit_button("Aggiorna"):
-            new_conf = conf.copy()
-            new_conf.loc[new_conf["Ruolo"]=="Admin", "Password"] = ap
-            new_conf.loc[new_conf["Ruolo"]=="User", "Password"] = up
-            conn.update(worksheet="Config", data=new_conf); st.success("Salvate!"); st.rerun()
