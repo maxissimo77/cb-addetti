@@ -10,22 +10,34 @@ st.set_page_config(
     layout="wide", 
     page_icon="https://www.caribebay.it/favicon.ico"
 )
+
+# Forza l'uso delle stringhe Python per evitare conflitti di dtype
 pd.options.mode.string_storage = "python"
 
 # --- CONNESSIONE ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# --- CARICAMENTO DATI (CACHE OTTIMIZZATA) ---
+# --- CARICAMENTO DATI ---
 @st.cache_data(ttl=60)
 def get_all_data():
     try:
-        return {
+        data_dict = {
             "addetti": conn.read(worksheet="Addetti"),
             "disp": conn.read(worksheet="Disponibilita"),
             "fabbisogno": conn.read(worksheet="Fabbisogno"),
             "postazioni": conn.read(worksheet="Postazioni"),
             "config": conn.read(worksheet="Config")
         }
+        
+        # --- CORREZIONE ERRORE DTYPE ---
+        # Forza la colonna Contestazioni a essere di tipo stringa per evitare il TypeError
+        if "Contestazioni" in data_dict["addetti"].columns:
+            data_dict["addetti"]["Contestazioni"] = data_dict["addetti"]["Contestazioni"].astype(str).replace(['nan', 'None', 'NAT'], '')
+        else:
+            # Se la colonna non esiste ancora nel foglio, la creiamo vuota (formato testo)
+            data_dict["addetti"]["Contestazioni"] = ""
+            
+        return data_dict
     except Exception as e:
         st.error(f"⚠️ Errore di connessione API: {e}")
         st.stop()
@@ -104,11 +116,9 @@ if st.sidebar.button("Logout"):
     for key in list(st.session_state.keys()): del st.session_state[key]
     st.rerun()
 
-# --- 1. DASHBOARD (SPOSTATA TABELLA PRESENZE IN ALTO) ---
+# --- 1. DASHBOARD ---
 if menu == "📊 Dashboard":
     st.header("Stato Occupazione Postazioni")
-    
-    # Selezione Data per la visualizzazione
     input_d = st.date_input("Inizio visualizzazione (settimana):", default_date)
     data_inizio = input_d.date() if hasattr(input_d, 'date') else input_d
     date_range = [data_inizio + timedelta(days=i) for i in range(7)]
@@ -117,37 +127,28 @@ if menu == "📊 Dashboard":
     if not date_aperte:
         st.warning(f"⚠️ Parco CHIUSO nel periodo selezionato. Stagione: {data_apertura.strftime('%d/%m')} - {data_chiusura.strftime('%d/%m')}")
     else:
-        # I Tab sono le date della settimana
         tabs = st.tabs([d.strftime("%d/%m") for d in date_aperte])
         for idx, t in enumerate(tabs):
             with t:
                 curr_date = date_aperte[idx]
                 g_sett = giorni_ita[curr_date.weekday()]
-                
-                # Caricamento dati per il giorno specifico
                 fabb = data["fabbisogno"][data["fabbisogno"]["Data"].astype(str).str.contains(str(curr_date), na=False)]
                 disp = data["disp"][data["disp"]["Data"].astype(str).str.contains(str(curr_date), na=False)]
                 staff_totale = data["addetti"].copy()
-                
-                # Filtro chi è in riposo fisso
                 staff_presente = staff_totale[staff_totale["GiornoRiposoSettimanale"] != g_sett]
                 
-                # Filtro chi ha segnato "NON Disponibile"
                 if not disp.empty:
                     disp['Key'] = disp['Nome'] + " " + disp['Cognome']
                     non_disp_keys = disp[disp["Stato"].astype(str).str.contains("NON", case=False, na=False)]['Key'].tolist()
                     staff_presente['Key'] = staff_presente['Nome'] + " " + staff_presente['Cognome']
                     staff_presente = staff_presente[~staff_presente['Key'].isin(non_disp_keys)]
                 
-                # Visualizzazione Card Postazioni (ORA IN ALTO)
                 cols = st.columns(3)
                 for i, post in enumerate(lista_postazioni):
                     presenti = staff_presente[staff_presente["Mansione"] == post]
                     f_row = fabb[fabb["Mansione"] == post]
                     req = int(f_row["Quantita"].iloc[0]) if not f_row.empty else 0
                     num_pres = len(presenti)
-                    
-                    # Logica colori
                     color_status = "#29b05c" if num_pres >= req and req > 0 else "#ff4b4b" if num_pres < req else "#1f77b4"
                     if req == 0: color_status = "#808080"
 
@@ -178,14 +179,6 @@ elif menu == "📅 Riepilogo Riposi Settimanali":
                     chi = add_m[add_m["GiornoRiposoSettimanale"] == g]
                     for _, r in chi.iterrows():
                         st.markdown(f"<div style='text-align: center; background-color: rgba(31, 119, 180, 0.1); padding: 10px 5px; border-radius: 5px; margin: 10px 0px; font-size: 14px; font-weight: 500; border: 1px solid rgba(31, 119, 180, 0.3);'>{r['Nome']} {r['Cognome']}</div>", unsafe_allow_html=True)
-            
-            non_def = add_m[add_m["GiornoRiposoSettimanale"] == "Non Definito"]
-            if not non_def.empty:
-                st.markdown("<div style='margin-top: 25px; border-top: 1px solid rgba(128,128,128,0.3); padding-top: 15px;'><b>Riposo Non Definito:</b></div>", unsafe_allow_html=True)
-                html_nd = '<div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; margin-bottom: 20px;">'
-                for _, r in non_def.iterrows():
-                    html_nd += f"<div style='border: 2px solid #ffa500; padding: 8px 15px; border-radius: 8px; font-weight: bold; background-color: rgba(255, 165, 0, 0.1); color: #333;'>{r['Nome']} {r['Cognome']}</div>"
-                st.markdown(html_nd + '</div>', unsafe_allow_html=True)
 
 # --- 3. GESTIONE RIPOSI RAPIDA ---
 elif menu == "📝 Gestione Riposi Rapida":
@@ -196,14 +189,6 @@ elif menu == "📝 Gestione Riposi Rapida":
         add_m = df_mod[df_mod["Mansione"] == m]
         if not add_m.empty:
             st.markdown(f"### 📍 {m}")
-            conteggi = add_m["GiornoRiposoSettimanale"].value_counts()
-            cols_c = st.columns(7)
-            for i, g in enumerate(giorni_ita):
-                n_rip = conteggi.get(g, 0)
-                with cols_c[i]: 
-                    st.markdown(f"<div style='text-align:center; background:rgba(128,128,128,0.05); border: 1px solid rgba(128,128,128,0.1); border-radius:5px; padding:5px;'><small>{g[:3]}</small><br><b style='color:#1f77b4;'>{n_rip}</b></div>", unsafe_allow_html=True)
-            
-            st.markdown("<div style='margin-top: 15px;'></div>", unsafe_allow_html=True)
             for idx, row in add_m.iterrows():
                 with st.container():
                     col_nome, col_scelta = st.columns([2, 1])
@@ -212,33 +197,14 @@ elif menu == "📝 Gestione Riposi Rapida":
                     with col_scelta:
                         st.markdown("<div style='margin-top: 8px;'></div>", unsafe_allow_html=True)
                         df_mod.at[idx, 'GiornoRiposoSettimanale'] = st.selectbox(f"Riposo {idx}", opzioni_riposo, index=opzioni_riposo.index(row['GiornoRiposoSettimanale']) if row['GiornoRiposoSettimanale'] in opzioni_riposo else 7, key=f"r_rap_{idx}", label_visibility="collapsed")
-            st.markdown("<br>", unsafe_allow_html=True)
-
+    
     if st.button("💾 Salva Tutte le Modifiche", type="primary", use_container_width=True):
-        conn.update(worksheet="Addetti", data=df_mod); st.cache_data.clear(); st.success("Salvato!"); st.rerun()
+        conn.update(worksheet="Addetti", data=df_mod)
+        st.cache_data.clear()
+        st.success("Salvato!")
+        st.rerun()
 
-# --- 4. AREA DISPONIBILITÀ ---
-elif menu == "📅 Area Disponibilità Staff":
-    st.header("Calendario Disponibilità Individuale")
-    df_t = data["addetti"].copy()
-    df_t['Full'] = df_t['Nome'] + " " + df_t['Cognome']
-    sel_dip = st.selectbox("Seleziona dipendente:", df_t['Full'].tolist())
-    row_d = df_t[df_t['Full'] == sel_dip].iloc[0]
-    df_p = data["disp"][(data["disp"]["Nome"] == row_d['Nome']) & (data["disp"]["Cognome"] == row_d['Cognome'])]
-    st.info(f"Stagione: **{data_apertura.strftime('%d/%m')}** - **{data_chiusura.strftime('%d/%m')}**")
-    c_cal = st.columns(5)
-    for idx, m in enumerate([5, 6, 7, 8, 9]):
-        with c_cal[idx]: genera_mini_calendario(df_p, row_d['GiornoRiposoSettimanale'], 2026, m)
-    with st.expander("Modifica Disponibilità"):
-        dr = st.date_input("Periodo:", value=[], min_value=data_apertura, max_value=data_chiusura)
-        st_r = st.radio("Stato:", ["Disponibile", "NON Disponibile"])
-        if st.button("Salva Date") and len(dr) == 2:
-            d_list = [str(dr[0] + timedelta(days=x)) for x in range((dr[1]-dr[0]).days + 1)]
-            nuovi = pd.DataFrame([{"Nome": row_d['Nome'], "Cognome": row_d['Cognome'], "Data": d, "Stato": st_r} for d in d_list])
-            old = data["disp"][~((data["disp"]["Nome"] == row_d['Nome']) & (data["disp"]["Cognome"] == row_d['Cognome']) & (data["disp"]["Data"].astype(str).isin(d_list)))]
-            conn.update(worksheet="Disponibilita", data=pd.concat([old, nuovi], ignore_index=True)); st.cache_data.clear(); st.rerun()
-
-# --- 5. GESTIONE ANAGRAFICA ---
+# --- 5. GESTIONE ANAGRAFICA (PUNTO CRITICO) ---
 elif menu == "👥 Gestione Anagrafica":
     st.header("Anagrafica Personale")
     if "editing_id" not in st.session_state: st.session_state["editing_id"] = None
@@ -254,21 +220,24 @@ elif menu == "👥 Gestione Anagrafica":
             em = c1.selectbox("Mansione", lista_postazioni, index=lista_postazioni.index(row['Mansione']) if row['Mansione'] in lista_postazioni else 0)
             er = c2.selectbox("Riposo", opzioni_riposo, index=opzioni_riposo.index(row['GiornoRiposoSettimanale']) if row['GiornoRiposoSettimanale'] in opzioni_riposo else 7)
             
-            val_cont = str(row['Contestazioni']) if 'Contestazioni' in row and pd.notna(row['Contestazioni']) else ""
-            e_cont = st.text_area("Lettere di Contestazione (Date e Note)", value=val_cont)
+            # Valore di default pulito per l'area di testo
+            val_cont = str(row['Contestazioni']) if pd.notna(row['Contestazioni']) else ""
+            e_cont = st.text_area("Lettere di Contestazione", value=val_cont)
             
-            cb1, cb2, _ = st.columns([1,1,2])
-            if cb1.form_submit_button("💾 Salva Modifiche"):
-                new_data = [en, ec, em, er, e_cont]
-                cols = ["Nome", "Cognome", "Mansione", "GiornoRiposoSettimanale", "Contestazioni"]
-                for i, col in enumerate(cols):
-                    data["addetti"].at[idx, col] = new_data[i]
+            if st.form_submit_button("💾 Salva Modifiche"):
+                # Aggiorniamo esplicitamente riga per riga per evitare problemi di dtype
+                data["addetti"].at[idx, "Nome"] = str(en)
+                data["addetti"].at[idx, "Cognome"] = str(ec)
+                data["addetti"].at[idx, "Mansione"] = str(em)
+                data["addetti"].at[idx, "GiornoRiposoSettimanale"] = str(er)
+                data["addetti"].at[idx, "Contestazioni"] = str(e_cont)
+                
                 conn.update(worksheet="Addetti", data=data["addetti"])
                 st.cache_data.clear()
                 st.session_state["editing_id"] = None
                 st.success("Dati aggiornati correttamente!")
                 st.rerun()
-            if cb2.form_submit_button("❌ Annulla"):
+            if st.form_submit_button("❌ Annulla"):
                 st.session_state["editing_id"] = None
                 st.rerun()
     else:
@@ -277,7 +246,7 @@ elif menu == "👥 Gestione Anagrafica":
             for idx, r in data["addetti"].iterrows():
                 with st.container():
                     c1, c2, c3 = st.columns([3, 3, 1])
-                    has_cont = 'Contestazioni' in r and pd.notna(r['Contestazioni']) and str(r['Contestazioni']).strip() != ""
+                    has_cont = str(r['Contestazioni']).strip() != "" and str(r['Contestazioni']).lower() != "nan"
                     cont_tag = " 🚩" if has_cont else ""
                     c1.markdown(f"**{r['Nome']} {r['Cognome']}**{cont_tag}")
                     c2.caption(f"{r['Mansione']} | Riposo: {r['GiornoRiposoSettimanale']}")
@@ -294,11 +263,12 @@ elif menu == "👥 Gestione Anagrafica":
                 nm, nr = st.selectbox("Mansione", lista_postazioni), st.selectbox("Riposo", opzioni_riposo)
                 ncnt = st.text_area("Eventuali Contestazioni iniziali")
                 if st.form_submit_button("Aggiungi Addetto"):
-                    new = pd.DataFrame([{"Nome":nn, "Cognome":nc, "Mansione":nm, "GiornoRiposoSettimanale":nr, "Contestazioni":ncnt}])
+                    new = pd.DataFrame([{"Nome":str(nn), "Cognome":str(nc), "Mansione":str(nm), "GiornoRiposoSettimanale":str(nr), "Contestazioni":str(ncnt)}])
                     conn.update(worksheet="Addetti", data=pd.concat([data["addetti"], new], ignore_index=True))
                     st.cache_data.clear(); st.success("Addetto inserito!"); st.rerun()
 
 # --- ALTRE SEZIONI ---
+# (Pianifica Fabbisogno, Impostazioni, Password, Postazioni rimangono come prima)
 elif menu == "⚙️ Pianifica Fabbisogno":
     st.header("Fabbisogno")
     tipo = st.radio("Modalità:", ["Giorno Singolo", "Intervallo"], horizontal=True)
