@@ -176,20 +176,7 @@ elif menu == "📅 Riepilogo Riposi Settimanali":
                     html_nd += f"<div style='border: 2px solid #ffa500; padding: 8px 15px; border-radius: 8px; font-weight: bold; background-color: rgba(255, 165, 0, 0.1); color: #333;'>{r['Nome']} {r['Cognome']}</div>"
                 st.markdown(html_nd + '</div>', unsafe_allow_html=True)
             
-            # Sezione Riposi Non Definiti
-            non_def = add_m[add_m["GiornoRiposoSettimanale"] == "Non Definito"]
-            if not non_def.empty:
-                st.markdown("<div style='margin-top: 20px; border-top: 1px solid rgba(128,128,128,0.3); padding-top: 15px;'><b>⚠️ Riposo Settimanale NON ancora assegnato:</b></div>", unsafe_allow_html=True)
-                html_nd = '<div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px;">'
-                for _, r in non_def.iterrows():
-                    html_nd += f"""
-                        <div style='border: 2px solid #ffa500; padding: 6px 12px; border-radius: 8px; 
-                        font-weight: bold; background-color: rgba(255, 165, 0, 0.1); color: #333; font-size: 12px;'>
-                            {r['Nome']} {r['Cognome']}
-                        </div>
-                    """
-                st.markdown(html_nd + '</div>', unsafe_allow_html=True)
-
+           
 # --- 3. GESTIONE RIPOSI RAPIDA ---
 elif menu == "📝 Gestione Riposi Rapida":
     st.header("Gestione Rapida Riposi Settimanali")
