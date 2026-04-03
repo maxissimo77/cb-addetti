@@ -69,7 +69,7 @@ giorni_ita = list(mappa_giorni.keys())
 opzioni_riposo = giorni_ita + ["Non Definito"]
 lista_postazioni = data["postazioni"]["Nome Postazione"].dropna().unique().tolist() if not data["postazioni"].empty else ["Generico"]
 
-# --- FUNZIONE CALENDARIO (AGGIORNATA CON NUOVI COLORI) ---
+# --- FUNZIONE CALENDARIO ---
 def genera_mini_calendario(df_persona, riposo_fisso, anno, mese):
     nomi_mesi_ita = {5: "MAGGIO", 6: "GIUGNO", 7: "LUGLIO", 8: "AGOSTO", 9: "SETTEMBRE"}
     st.markdown(f"<div style='text-align: center; background-color: #1f77b4; color: white; padding: 5px; border-radius: 5px; margin-bottom: 5px;'><b>{nomi_mesi_ita.get(mese, 'Mese')}</b></div>", unsafe_allow_html=True)
@@ -90,17 +90,15 @@ def genera_mini_calendario(df_persona, riposo_fisso, anno, mese):
                 else:
                     stato_row = df_persona[df_persona["Data"].astype(str).str.contains(d_str, na=False)]
                     bg, tx, label = "transparent", "inherit", str(day)
-                    
                     if not stato_row.empty:
                         stato_val = str(stato_row["Stato"].iloc[0]).upper()
                         if "NON" in stato_val: bg, tx = "#ff4b4b", "white"
-                        elif "PERMESSO" in stato_val: bg, tx = "#00008B", "white" # Blu Scuro
-                        elif "ASSENTE" in stato_val: bg, tx = "#000000", "white"  # Nero
-                        elif "MALATTIA" in stato_val: bg, tx = "#696969", "white" # Grigio Scuro
+                        elif "PERMESSO" in stato_val: bg, tx = "#00008B", "white"
+                        elif "ASSENTE" in stato_val: bg, tx = "#000000", "white"
+                        elif "MALATTIA" in stato_val: bg, tx = "#696969", "white"
                         elif "DISPONIBILE" in stato_val: bg, tx = "#29b05c", "white"
                     elif i == idx_riposo_fisso: 
                         bg, tx = "#ffa500", "white"
-                        
                 html += f'<td style="background:{bg}; color:{tx}; border:1px solid rgba(128,128,128,0.2); font-weight:bold;">{label}</td>'
         html += '</tr>'
     st.markdown(html + '</table>', unsafe_allow_html=True)
@@ -139,7 +137,6 @@ if menu == "📊 Dashboard":
                 
                 if not disp.empty:
                     disp['Key'] = disp['Nome'] + " " + disp['Cognome']
-                    # Filtra via chiunque non sia esplicitamente "Disponibile" o chi è in stati di assenza
                     non_disp_keys = disp[~disp["Stato"].astype(str).str.contains("Disponibile", case=False, na=False)]['Key'].tolist()
                     staff_presente['Key'] = staff_presente['Nome'] + " " + staff_presente['Cognome']
                     staff_presente = staff_presente[~staff_presente['Key'].isin(non_disp_keys)]
@@ -214,7 +211,7 @@ elif menu == "📝 Gestione Riposi Rapida":
     if st.button("💾 Salva Tutte le Modifiche", type="primary", use_container_width=True):
         conn.update(worksheet="Addetti", data=df_mod); st.cache_data.clear(); st.success("Salvato!"); st.rerun()
 
-# --- 4. AREA DISPONIBILITÀ (AGGIORNATA CON NUOVE VOCI) ---
+# --- 4. AREA DISPONIBILITÀ ---
 elif menu == "📅 Area Disponibilità Staff":
     st.header("Calendario Disponibilità Individuale")
     df_t = data["addetti"].copy()
@@ -227,7 +224,6 @@ elif menu == "📅 Area Disponibilità Staff":
         with c_cal[idx]: genera_mini_calendario(df_p, row_d['GiornoRiposoSettimanale'], 2026, m)
     with st.expander("Modifica Disponibilità / Assenze"):
         dr = st.date_input("Periodo:", value=[], min_value=data_apertura, max_value=data_chiusura)
-        # Nuove opzioni richieste
         st_r = st.radio("Stato:", ["Disponibile", "NON Disponibile", "Permesso", "Assente", "Malattia"], horizontal=True)
         if st.button("Salva Date") and len(dr) == 2:
             d_list = [str(dr[0] + timedelta(days=x)) for x in range((dr[1]-dr[0]).days + 1)]
@@ -235,7 +231,7 @@ elif menu == "📅 Area Disponibilità Staff":
             old = data["disp"][~((data["disp"]["Nome"] == row_d['Nome']) & (data["disp"]["Cognome"] == row_d['Cognome']) & (data["disp"]["Data"].astype(str).isin(d_list)))]
             conn.update(worksheet="Disponibilita", data=pd.concat([old, nuovi], ignore_index=True)); st.cache_data.clear(); st.rerun()
 
-# --- 5. GESTIONE ANAGRAFICA (AGGIORNATA CON SOMMA ASSENZE) ---
+# --- 5. GESTIONE ANAGRAFICA (AGGIORNATA) ---
 elif menu == "👥 Gestione Anagrafica":
     st.header("Anagrafica Personale")
     if "editing_id" not in st.session_state: st.session_state["editing_id"] = None
@@ -263,11 +259,11 @@ elif menu == "👥 Gestione Anagrafica":
         t1, t2 = st.tabs(["📋 Elenco Staff", "➕ Nuovo Addetto"])
         with t1:
             for idx, r in data["addetti"].iterrows():
-                # Calcolo somme assenze per l'addetto corrente
                 disp_addetto = data["disp"][(data["disp"]["Nome"] == r['Nome']) & (data["disp"]["Cognome"] == r['Cognome'])]
                 conteggi = disp_addetto["Stato"].value_counts()
                 
-                sum_str = f"🚫 NON Disp: {conteggi.get('NON Disponibile', 0)} | 🔵 Permessi: {conteggi.get('Permesso', 0)} | ⚫ Assenti: {conteggi.get('Assente', 0)} | 🔘 Malattia: {conteggi.get('Malattia', 0)}"
+                # MODIFICA RICHIESTA: Taggato "Disponibile", rimosso "NON Disp", corretta label "Assente"
+                sum_str = f"✅ Disponibile: {conteggi.get('Disponibile', 0)} | 🔵 Permessi: {conteggi.get('Permesso', 0)} | ⚫ Assente: {conteggi.get('Assente', 0)} | 🔘 Malattia: {conteggi.get('Malattia', 0)}"
 
                 with st.container():
                     c1, c2, c3 = st.columns([3, 3, 1])
@@ -275,10 +271,7 @@ elif menu == "👥 Gestione Anagrafica":
                     c1.markdown(f"**{r['Nome']} {r['Cognome']}**{' 🚩' if has_cont else ''}")
                     c2.caption(f"{r['Mansione']} | Riposo: {r['GiornoRiposoSettimanale']}")
                     if c3.button("✏️", key=f"ed_{idx}"): st.session_state["editing_id"] = idx; st.rerun()
-                    
-                    # Visualizzazione somme sotto il nome
                     st.markdown(f"<div style='font-size: 11px; color: #666; margin-top: -10px; margin-bottom: 5px;'>{sum_str}</div>", unsafe_allow_html=True)
-                    
                     if has_cont:
                         with st.expander("Vedi contestazioni"): st.warning(r['Contestazioni'])
                     st.divider()
