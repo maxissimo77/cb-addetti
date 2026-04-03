@@ -26,22 +26,16 @@ def get_all_data():
             "postazioni": conn.read(worksheet="Postazioni"),
             "config": conn.read(worksheet="Config")
         }
-        
-        # --- UNICA MODIFICA: FIX TYPEERROR ---
-        # Forza la colonna Contestazioni a essere testo per evitare il crash in scrittura
         if "Contestazioni" in res["addetti"].columns:
             res["addetti"]["Contestazioni"] = res["addetti"]["Contestazioni"].astype(str).replace(['nan', 'None', '<NA>'], '')
         else:
             res["addetti"]["Contestazioni"] = ""
-            
         return res
     except Exception as e:
         st.error(f"⚠️ Errore di connessione API: {e}")
         st.stop()
 
 data = get_all_data()
-
-# --- DA QUI IN POI IL CODICE RIMANE IDENTICO AL TUO ORIGINALE ---
 
 # --- ESTRAZIONE CONFIGURAZIONE ---
 conf_df = data["config"]
@@ -75,7 +69,7 @@ giorni_ita = list(mappa_giorni.keys())
 opzioni_riposo = giorni_ita + ["Non Definito"]
 lista_postazioni = data["postazioni"]["Nome Postazione"].dropna().unique().tolist() if not data["postazioni"].empty else ["Generico"]
 
-# --- FUNZIONE CALENDARIO ---
+# --- FUNZIONE CALENDARIO (AGGIORNATA CON NUOVI COLORI) ---
 def genera_mini_calendario(df_persona, riposo_fisso, anno, mese):
     nomi_mesi_ita = {5: "MAGGIO", 6: "GIUGNO", 7: "LUGLIO", 8: "AGOSTO", 9: "SETTEMBRE"}
     st.markdown(f"<div style='text-align: center; background-color: #1f77b4; color: white; padding: 5px; border-radius: 5px; margin-bottom: 5px;'><b>{nomi_mesi_ita.get(mese, 'Mese')}</b></div>", unsafe_allow_html=True)
@@ -94,12 +88,19 @@ def genera_mini_calendario(df_persona, riposo_fisso, anno, mese):
                 if not is_open:
                     bg, tx, label = "#f0f0f0", "#bfbfbf", f"<span style='text-decoration: line-through;'>{day}</span>"
                 else:
-                    stato_s = df_persona[df_persona["Data"].astype(str).str.contains(d_str, na=False)]["Stato"]
+                    stato_row = df_persona[df_persona["Data"].astype(str).str.contains(d_str, na=False)]
                     bg, tx, label = "transparent", "inherit", str(day)
-                    if not stato_s[stato_s.astype(str).str.contains("NON", case=False, na=False)].empty:
-                        bg, tx = "#ff4b4b", "white"
-                    elif i == idx_riposo_fisso: bg, tx = "#ffa500", "white"
-                    elif not stato_s.empty: bg, tx = "#29b05c", "white"
+                    
+                    if not stato_row.empty:
+                        stato_val = str(stato_row["Stato"].iloc[0]).upper()
+                        if "NON" in stato_val: bg, tx = "#ff4b4b", "white"
+                        elif "PERMESSO" in stato_val: bg, tx = "#00008B", "white" # Blu Scuro
+                        elif "ASSENTE" in stato_val: bg, tx = "#000000", "white"  # Nero
+                        elif "MALATTIA" in stato_val: bg, tx = "#696969", "white" # Grigio Scuro
+                        elif "DISPONIBILE" in stato_val: bg, tx = "#29b05c", "white"
+                    elif i == idx_riposo_fisso: 
+                        bg, tx = "#ffa500", "white"
+                        
                 html += f'<td style="background:{bg}; color:{tx}; border:1px solid rgba(128,128,128,0.2); font-weight:bold;">{label}</td>'
         html += '</tr>'
     st.markdown(html + '</table>', unsafe_allow_html=True)
@@ -138,7 +139,8 @@ if menu == "📊 Dashboard":
                 
                 if not disp.empty:
                     disp['Key'] = disp['Nome'] + " " + disp['Cognome']
-                    non_disp_keys = disp[disp["Stato"].astype(str).str.contains("NON", case=False, na=False)]['Key'].tolist()
+                    # Filtra via chiunque non sia esplicitamente "Disponibile" o chi è in stati di assenza
+                    non_disp_keys = disp[~disp["Stato"].astype(str).str.contains("Disponibile", case=False, na=False)]['Key'].tolist()
                     staff_presente['Key'] = staff_presente['Nome'] + " " + staff_presente['Cognome']
                     staff_presente = staff_presente[~staff_presente['Key'].isin(non_disp_keys)]
                 
@@ -212,7 +214,7 @@ elif menu == "📝 Gestione Riposi Rapida":
     if st.button("💾 Salva Tutte le Modifiche", type="primary", use_container_width=True):
         conn.update(worksheet="Addetti", data=df_mod); st.cache_data.clear(); st.success("Salvato!"); st.rerun()
 
-# --- 4. AREA DISPONIBILITÀ ---
+# --- 4. AREA DISPONIBILITÀ (AGGIORNATA CON NUOVE VOCI) ---
 elif menu == "📅 Area Disponibilità Staff":
     st.header("Calendario Disponibilità Individuale")
     df_t = data["addetti"].copy()
@@ -223,16 +225,17 @@ elif menu == "📅 Area Disponibilità Staff":
     c_cal = st.columns(5)
     for idx, m in enumerate([5, 6, 7, 8, 9]):
         with c_cal[idx]: genera_mini_calendario(df_p, row_d['GiornoRiposoSettimanale'], 2026, m)
-    with st.expander("Modifica Disponibilità"):
+    with st.expander("Modifica Disponibilità / Assenze"):
         dr = st.date_input("Periodo:", value=[], min_value=data_apertura, max_value=data_chiusura)
-        st_r = st.radio("Stato:", ["Disponibile", "NON Disponibile"])
+        # Nuove opzioni richieste
+        st_r = st.radio("Stato:", ["Disponibile", "NON Disponibile", "Permesso", "Assente", "Malattia"], horizontal=True)
         if st.button("Salva Date") and len(dr) == 2:
             d_list = [str(dr[0] + timedelta(days=x)) for x in range((dr[1]-dr[0]).days + 1)]
             nuovi = pd.DataFrame([{"Nome": row_d['Nome'], "Cognome": row_d['Cognome'], "Data": d, "Stato": st_r} for d in d_list])
             old = data["disp"][~((data["disp"]["Nome"] == row_d['Nome']) & (data["disp"]["Cognome"] == row_d['Cognome']) & (data["disp"]["Data"].astype(str).isin(d_list)))]
             conn.update(worksheet="Disponibilita", data=pd.concat([old, nuovi], ignore_index=True)); st.cache_data.clear(); st.rerun()
 
-# --- 5. GESTIONE ANAGRAFICA ---
+# --- 5. GESTIONE ANAGRAFICA (AGGIORNATA CON SOMMA ASSENZE) ---
 elif menu == "👥 Gestione Anagrafica":
     st.header("Anagrafica Personale")
     if "editing_id" not in st.session_state: st.session_state["editing_id"] = None
@@ -249,10 +252,10 @@ elif menu == "👥 Gestione Anagrafica":
             e_cont = st.text_area("Lettere di Contestazione", value=val_cont)
             cb1, cb2, _ = st.columns([1,1,2])
             if cb1.form_submit_button("💾 Salva"):
-                new_data = [en, ec, em, er, e_cont]
-                cols = ["Nome", "Cognome", "Mansione", "GiornoRiposoSettimanale", "Contestazioni"]
-                for i, col in enumerate(cols):
-                    data["addetti"].at[idx, col] = new_data[i]
+                new_data_row = [en, ec, em, er, e_cont]
+                cols_target = ["Nome", "Cognome", "Mansione", "GiornoRiposoSettimanale", "Contestazioni"]
+                for i, col in enumerate(cols_target):
+                    data["addetti"].at[idx, col] = new_data_row[i]
                 conn.update(worksheet="Addetti", data=data["addetti"]); st.cache_data.clear(); st.session_state["editing_id"] = None; st.rerun()
             if cb2.form_submit_button("❌ Annulla"):
                 st.session_state["editing_id"] = None; st.rerun()
@@ -260,12 +263,22 @@ elif menu == "👥 Gestione Anagrafica":
         t1, t2 = st.tabs(["📋 Elenco Staff", "➕ Nuovo Addetto"])
         with t1:
             for idx, r in data["addetti"].iterrows():
+                # Calcolo somme assenze per l'addetto corrente
+                disp_addetto = data["disp"][(data["disp"]["Nome"] == r['Nome']) & (data["disp"]["Cognome"] == r['Cognome'])]
+                conteggi = disp_addetto["Stato"].value_counts()
+                
+                sum_str = f"🚫 NON Disp: {conteggi.get('NON Disponibile', 0)} | 🔵 Permessi: {conteggi.get('Permesso', 0)} | ⚫ Assenti: {conteggi.get('Assente', 0)} | 🔘 Malattia: {conteggi.get('Malattia', 0)}"
+
                 with st.container():
                     c1, c2, c3 = st.columns([3, 3, 1])
                     has_cont = 'Contestazioni' in r and pd.notna(r['Contestazioni']) and str(r['Contestazioni']).strip() != ""
                     c1.markdown(f"**{r['Nome']} {r['Cognome']}**{' 🚩' if has_cont else ''}")
                     c2.caption(f"{r['Mansione']} | Riposo: {r['GiornoRiposoSettimanale']}")
                     if c3.button("✏️", key=f"ed_{idx}"): st.session_state["editing_id"] = idx; st.rerun()
+                    
+                    # Visualizzazione somme sotto il nome
+                    st.markdown(f"<div style='font-size: 11px; color: #666; margin-top: -10px; margin-bottom: 5px;'>{sum_str}</div>", unsafe_allow_html=True)
+                    
                     if has_cont:
                         with st.expander("Vedi contestazioni"): st.warning(r['Contestazioni'])
                     st.divider()
@@ -275,8 +288,8 @@ elif menu == "👥 Gestione Anagrafica":
                 nm, nr = st.selectbox("Mansione", lista_postazioni), st.selectbox("Riposo", opzioni_riposo)
                 ncnt = st.text_area("Contestazioni iniziali")
                 if st.form_submit_button("Aggiungi"):
-                    new = pd.DataFrame([{"Nome":nn, "Cognome":nc, "Mansione":nm, "GiornoRiposoSettimanale":nr, "Contestazioni":ncnt}])
-                    conn.update(worksheet="Addetti", data=pd.concat([data["addetti"], new], ignore_index=True))
+                    new_member = pd.DataFrame([{"Nome":nn, "Cognome":nc, "Mansione":nm, "GiornoRiposoSettimanale":nr, "Contestazioni":ncnt}])
+                    conn.update(worksheet="Addetti", data=pd.concat([data["addetti"], new_member], ignore_index=True))
                     st.cache_data.clear(); st.rerun()
 
 # --- ALTRE SEZIONI ---
