@@ -104,10 +104,10 @@ if st.sidebar.button("Logout"):
     for key in list(st.session_state.keys()): del st.session_state[key]
     st.rerun()
 
-# --- 1. DASHBOARD ---
+# --- 1. DASHBOARD (VERSIONE CARD) ---
 if menu == "📊 Dashboard":
-    st.header("Dashboard Occupazione")
-    input_d = st.date_input("Inizio visualizzazione:", default_date)
+    st.header("Stato Occupazione Postazioni")
+    input_d = st.date_input("Inizio visualizzazione (settimana):", default_date)
     data_inizio = input_d.date() if hasattr(input_d, 'date') else input_d
     date_range = [data_inizio + timedelta(days=i) for i in range(7)]
     date_aperte = [d for d in date_range if data_apertura <= d <= data_chiusura]
@@ -122,23 +122,38 @@ if menu == "📊 Dashboard":
                 g_sett = giorni_ita[curr_date.weekday()]
                 fabb = data["fabbisogno"][data["fabbisogno"]["Data"].astype(str).str.contains(str(curr_date), na=False)]
                 disp = data["disp"][data["disp"]["Data"].astype(str).str.contains(str(curr_date), na=False)]
-                staff = data["addetti"].copy()
-                staff = staff[staff["GiornoRiposoSettimanale"] != g_sett]
+                staff_totale = data["addetti"].copy()
+                staff_presente = staff_totale[staff_totale["GiornoRiposoSettimanale"] != g_sett]
                 
                 if not disp.empty:
                     disp['Key'] = disp['Nome'] + " " + disp['Cognome']
                     non_disp_keys = disp[disp["Stato"].astype(str).str.contains("NON", case=False, na=False)]['Key'].tolist()
-                    staff['Key'] = staff['Nome'] + " " + staff['Cognome']
-                    staff = staff[~staff['Key'].isin(non_disp_keys)]
+                    staff_presente['Key'] = staff_presente['Nome'] + " " + staff_presente['Cognome']
+                    staff_presente = staff_presente[~staff_presente['Key'].isin(non_disp_keys)]
                 
                 cols = st.columns(3)
                 for i, post in enumerate(lista_postazioni):
-                    presenti = staff[staff["Mansione"] == post]
+                    presenti = staff_presente[staff_presente["Mansione"] == post]
                     f_row = fabb[fabb["Mansione"] == post]
                     req = int(f_row["Quantita"].iloc[0]) if not f_row.empty else 0
+                    num_pres = len(presenti)
+                    
+                    color_status = "#29b05c" if num_pres >= req and req > 0 else "#ff4b4b" if num_pres < req else "#1f77b4"
+                    if req == 0: color_status = "#808080"
+
                     with cols[i % 3]:
-                        st.metric(post, f"{len(presenti)}/{req}", delta=len(presenti)-req)
-                        for _, r in presenti.iterrows(): st.caption(f"• {r['Nome']} {r['Cognome']}")
+                        st.markdown(f"""
+                            <div style="border: 1px solid #ddd; border-radius: 10px; padding: 0px; margin-bottom: 20px; background-color: white; box-shadow: 2px 2px 5px rgba(0,0,0,0.05);">
+                                <div style="background-color: {color_status}; color: white; padding: 10px; border-radius: 10px 10px 0 0; text-align: center; font-weight: bold; text-transform: uppercase; font-size: 14px;">{post}</div>
+                                <div style="padding: 15px; text-align: center;">
+                                    <span style="font-size: 24px; font-weight: bold; color: #333;">{num_pres}</span>
+                                    <span style="font-size: 18px; color: #666;"> / {req}</span>
+                                    <div style="margin-top: 10px; border-top: 1px solid #eee; padding-top: 10px; text-align: left;">
+                                        {"".join([f"<div style='font-size: 13px; color: #444; padding: 2px 0;'>• {r['Nome']} {r['Cognome']}</div>" for _, r in presenti.iterrows()]) if not presenti.empty else "<div style='color:#999; font-style:italic; font-size:12px;'>Nessun addetto</div>"}
+                                    </div>
+                                </div>
+                            </div>
+                        """, unsafe_allow_html=True)
 
 # --- 2. RIEPILOGO RIPOSI ---
 elif menu == "📅 Riepilogo Riposi Settimanali":
@@ -153,58 +168,27 @@ elif menu == "📅 Riepilogo Riposi Settimanali":
                     chi = add_m[add_m["GiornoRiposoSettimanale"] == g]
                     for _, r in chi.iterrows():
                         st.markdown(f"<div style='text-align: center; background-color: rgba(31, 119, 180, 0.1); padding: 10px 5px; border-radius: 5px; margin: 10px 0px; font-size: 14px; font-weight: 500; border: 1px solid rgba(31, 119, 180, 0.3);'>{r['Nome']} {r['Cognome']}</div>", unsafe_allow_html=True)
-            
-            non_def = add_m[add_m["GiornoRiposoSettimanale"] == "Non Definito"]
-            if not non_def.empty:
-                st.markdown("<div style='margin-top: 25px; border-top: 1px solid rgba(128,128,128,0.3); padding-top: 15px;'><b>Riposo Non Definito:</b></div>", unsafe_allow_html=True)
-                html_nd = '<div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; margin-bottom: 20px;">'
-                for _, r in non_def.iterrows():
-                    html_nd += f"<div style='border: 2px solid #ffa500; padding: 8px 15px; border-radius: 8px; font-weight: bold; background-color: rgba(255, 165, 0, 0.1); color: #333;'>{r['Nome']} {r['Cognome']}</div>"
-                st.markdown(html_nd + '</div>', unsafe_allow_html=True)
 
-# --- 3. GESTIONE RIPOSI RAPIDA (RE-INTERFACCIA COMPLETA) ---
+# --- 3. GESTIONE RIPOSI RAPIDA ---
 elif menu == "📝 Gestione Riposi Rapida":
     st.header("Gestione Rapida Riposi Settimanali")
-    st.info("In questa sezione puoi modificare velocemente i giorni di riposo fisso di tutto lo staff.")
-    
     df_mod = data["addetti"].copy()
-    
     for m in lista_postazioni:
         add_m = df_mod[df_mod["Mansione"] == m]
         if not add_m.empty:
             st.markdown(f"### 📍 {m}")
-            
-            # Contatori di riepilogo per mansione
             conteggi = add_m["GiornoRiposoSettimanale"].value_counts()
             cols_c = st.columns(7)
             for i, g in enumerate(giorni_ita):
                 n_rip = conteggi.get(g, 0)
                 with cols_c[i]: 
                     st.markdown(f"<div style='text-align:center; background:rgba(128,128,128,0.05); border: 1px solid rgba(128,128,128,0.1); border-radius:5px; padding:5px;'><small>{g[:3]}</small><br><b style='color:#1f77b4;'>{n_rip}</b></div>", unsafe_allow_html=True)
-            
-            st.markdown("<div style='margin-bottom:15px;'></div>", unsafe_allow_html=True)
-
-            # Lista dipendenti con selectbox
             for idx, row in add_m.iterrows():
                 col_nome, col_scelta = st.columns([2, 1])
-                with col_nome:
-                    st.markdown(f"<div style='padding: 8px 0;'>{row['Nome']} <b>{row['Cognome']}</b></div>", unsafe_allow_html=True)
-                with col_scelta:
-                    idx_r = opzioni_riposo.index(row['GiornoRiposoSettimanale']) if row['GiornoRiposoSettimanale'] in opzioni_riposo else 7
-                    df_mod.at[idx, 'GiornoRiposoSettimanale'] = st.selectbox(
-                        f"Riposo per {row['Nome']} {row['Cognome']}", 
-                        opzioni_riposo, 
-                        index=idx_r, 
-                        key=f"r_rap_{idx}", 
-                        label_visibility="collapsed"
-                    )
-            st.markdown("---")
-            
+                col_nome.markdown(f"<div style='padding: 8px 0;'>{row['Nome']} <b>{row['Cognome']}</b></div>", unsafe_allow_html=True)
+                df_mod.at[idx, 'GiornoRiposoSettimanale'] = col_scelta.selectbox(f"Riposo {idx}", opzioni_riposo, index=opzioni_riposo.index(row['GiornoRiposoSettimanale']) if row['GiornoRiposoSettimanale'] in opzioni_riposo else 7, key=f"r_rap_{idx}", label_visibility="collapsed")
     if st.button("💾 Salva Tutte le Modifiche", type="primary", use_container_width=True):
-        conn.update(worksheet="Addetti", data=df_mod)
-        st.cache_data.clear()
-        st.success("Modifiche salvate con successo!")
-        st.rerun()
+        conn.update(worksheet="Addetti", data=df_mod); st.cache_data.clear(); st.success("Salvato!"); st.rerun()
 
 # --- 4. AREA DISPONIBILITÀ ---
 elif menu == "📅 Area Disponibilità Staff":
@@ -214,14 +198,10 @@ elif menu == "📅 Area Disponibilità Staff":
     sel_dip = st.selectbox("Seleziona dipendente:", df_t['Full'].tolist())
     row_d = df_t[df_t['Full'] == sel_dip].iloc[0]
     df_p = data["disp"][(data["disp"]["Nome"] == row_d['Nome']) & (data["disp"]["Cognome"] == row_d['Cognome'])]
-    
     st.info(f"Stagione: **{data_apertura.strftime('%d/%m')}** - **{data_chiusura.strftime('%d/%m')}**")
-    
     c_cal = st.columns(5)
     for idx, m in enumerate([5, 6, 7, 8, 9]):
-        with c_cal[idx]: 
-            genera_mini_calendario(df_p, row_d['GiornoRiposoSettimanale'], 2026, m)
-    
+        with c_cal[idx]: genera_mini_calendario(df_p, row_d['GiornoRiposoSettimanale'], 2026, m)
     with st.expander("Modifica Disponibilità"):
         dr = st.date_input("Periodo:", value=[], min_value=data_apertura, max_value=data_chiusura)
         st_r = st.radio("Stato:", ["Disponibile", "NON Disponibile"])
@@ -229,58 +209,49 @@ elif menu == "📅 Area Disponibilità Staff":
             d_list = [str(dr[0] + timedelta(days=x)) for x in range((dr[1]-dr[0]).days + 1)]
             nuovi = pd.DataFrame([{"Nome": row_d['Nome'], "Cognome": row_d['Cognome'], "Data": d, "Stato": st_r} for d in d_list])
             old = data["disp"][~((data["disp"]["Nome"] == row_d['Nome']) & (data["disp"]["Cognome"] == row_d['Cognome']) & (data["disp"]["Data"].astype(str).isin(d_list)))]
-            conn.update(worksheet="Disponibilita", data=pd.concat([old, nuovi], ignore_index=True))
-            st.cache_data.clear(); st.rerun()
+            conn.update(worksheet="Disponibilita", data=pd.concat([old, nuovi], ignore_index=True)); st.cache_data.clear(); st.rerun()
 
-# --- ALTRE SEZIONI ---
+# --- 5. ALTRE SEZIONI ---
 elif menu == "⚙️ Pianifica Fabbisogno":
-    st.header("Gestione Fabbisogno Staff")
+    st.header("Fabbisogno")
     tipo = st.radio("Modalità:", ["Giorno Singolo", "Intervallo"], horizontal=True)
     if tipo == "Giorno Singolo":
-        dt = st.date_input("Giorno:", default_date, min_value=data_apertura, max_value=data_chiusura)
-        date_list = [dt]
+        dt = st.date_input("Giorno:", default_date, min_value=data_apertura, max_value=data_chiusura); date_list = [dt]
     else:
-        dr = st.date_input("Periodo:", value=[], min_value=data_apertura, max_value=data_chiusura)
-        date_list = [dr[0] + timedelta(days=x) for x in range((dr[1]-dr[0]).days + 1)] if len(dr) == 2 else []
+        dr = st.date_input("Periodo:", value=[], min_value=data_apertura, max_value=data_chiusura); date_list = [dr[0] + timedelta(days=x) for x in range((dr[1]-dr[0]).days + 1)] if len(dr) == 2 else []
     if date_list:
         f_inputs = {p: st.number_input(f"{p}:", min_value=0, key=f"f_{p}") for p in lista_postazioni}
-        if st.button("💾 Salva Fabbisogno", type="primary"):
+        if st.button("💾 Salva", type="primary"):
             new_r = [{"Data": str(d), "Mansione": p, "Quantita": v} for d in date_list for p, v in f_inputs.items()]
             old_d = data["fabbisogno"][~data["fabbisogno"]["Data"].astype(str).isin([str(d) for d in date_list])]
-            conn.update(worksheet="Fabbisogno", data=pd.concat([old_d, pd.DataFrame(new_r)], ignore_index=True))
-            st.cache_data.clear(); st.rerun()
+            conn.update(worksheet="Fabbisogno", data=pd.concat([old_d, pd.DataFrame(new_r)], ignore_index=True)); st.cache_data.clear(); st.rerun()
 
 elif menu == "👥 Gestione Anagrafica":
     st.header("Anagrafica")
     if "editing_id" not in st.session_state: st.session_state["editing_id"] = None
     if st.session_state["editing_id"] is not None:
-        idx = st.session_state["editing_id"]
-        row = data["addetti"].loc[idx]
+        idx = st.session_state["editing_id"]; row = data["addetti"].loc[idx]
         with st.form("edit"):
             en = st.text_input("Nome", row['Nome']); ec = st.text_input("Cognome", row['Cognome'])
             em = st.selectbox("Mansione", lista_postazioni, index=lista_postazioni.index(row['Mansione']) if row['Mansione'] in lista_postazioni else 0)
             er = st.selectbox("Riposo", opzioni_riposo, index=opzioni_riposo.index(row['GiornoRiposoSettimanale']) if row['GiornoRiposoSettimanale'] in opzioni_riposo else 7)
             if st.form_submit_button("Salva"):
                 data["addetti"].loc[idx] = [en, ec, em, er]
-                conn.update(worksheet="Addetti", data=data["addetti"])
-                st.cache_data.clear(); st.session_state["editing_id"] = None; st.rerun()
+                conn.update(worksheet="Addetti", data=data["addetti"]); st.cache_data.clear(); st.session_state["editing_id"] = None; st.rerun()
             if st.form_submit_button("Annulla"): st.session_state["editing_id"] = None; st.rerun()
     else:
         t1, t2 = st.tabs(["Elenco", "Nuovo"])
         with t1:
             for idx, r in data["addetti"].iterrows():
                 c1, c2, c3 = st.columns([3, 2, 1])
-                c1.write(f"**{r['Nome']} {r['Cognome']}**")
-                c2.caption(f"{r['Mansione']} | {r['GiornoRiposoSettimanale']}")
+                c1.write(f"**{r['Nome']} {r['Cognome']}**"); c2.caption(f"{r['Mansione']} | {r['GiornoRiposoSettimanale']}")
                 if c3.button("✏️", key=f"ed_{idx}"): st.session_state["editing_id"] = idx; st.rerun()
         with t2:
             with st.form("n"):
-                nn, nc = st.text_input("Nome"), st.text_input("Cognome")
-                nm, nr = st.selectbox("Mansione", lista_postazioni), st.selectbox("Riposo", opzioni_riposo)
+                nn, nc = st.text_input("Nome"), st.text_input("Cognome"); nm, nr = st.selectbox("Mansione", lista_postazioni), st.selectbox("Riposo", opzioni_riposo)
                 if st.form_submit_button("Aggiungi"):
                     new = pd.DataFrame([{"Nome":nn,"Cognome":nc,"Mansione":nm,"GiornoRiposoSettimanale":nr}])
-                    conn.update(worksheet="Addetti", data=pd.concat([data["addetti"], new], ignore_index=True))
-                    st.cache_data.clear(); st.rerun()
+                    conn.update(worksheet="Addetti", data=pd.concat([data["addetti"], new], ignore_index=True)); st.cache_data.clear(); st.rerun()
 
 elif menu == "⚙️ Impostazioni Stagione":
     st.header("Configurazione Stagione")
@@ -290,23 +261,19 @@ elif menu == "⚙️ Impostazioni Stagione":
             conf_agg = data["config"].copy()
             conf_agg.loc[conf_agg["Ruolo"] == "Apertura", "Password"] = str(na)
             conf_agg.loc[conf_agg["Ruolo"] == "Chiusura", "Password"] = str(nc)
-            conn.update(worksheet="Config", data=conf_agg)
-            st.cache_data.clear(); st.rerun()
+            conn.update(worksheet="Config", data=conf_agg); st.cache_data.clear(); st.rerun()
 
 elif menu == "🔑 Gestione Password":
     st.header("Password")
     with st.form("p"):
         ap = st.text_input("Admin", value=admin_pwd); up = st.text_input("User", value=user_pwd)
         if st.form_submit_button("Salva"):
-            new_conf = data["config"].copy()
-            new_conf.loc[new_conf["Ruolo"]=="Admin", "Password"] = ap
-            new_conf.loc[new_conf["Ruolo"]=="User", "Password"] = up
+            new_conf = data["config"].copy(); new_conf.loc[new_conf["Ruolo"]=="Admin", "Password"] = ap; new_conf.loc[new_conf["Ruolo"]=="User", "Password"] = up
             conn.update(worksheet="Config", data=new_conf); st.cache_data.clear(); st.rerun()
 
 elif menu == "🚩 Gestione Postazioni":
     st.header("Postazioni")
     np = st.text_input("Nuova")
     if st.button("Aggiungi"):
-        conn.update(worksheet="Postazioni", data=pd.concat([data["postazioni"], pd.DataFrame([{"Nome Postazione": np}])], ignore_index=True))
-        st.cache_data.clear(); st.rerun()
+        conn.update(worksheet="Postazioni", data=pd.concat([data["postazioni"], pd.DataFrame([{"Nome Postazione": np}])], ignore_index=True)); st.cache_data.clear(); st.rerun()
     st.table(data["postazioni"])
