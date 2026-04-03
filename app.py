@@ -1,33 +1,3 @@
-from fpdf import FPDF
-
-# --- FUNZIONE EXPORT PDF (da mettere in alto nel file) ---
-def export_riposi_pdf(df):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", "B", 16)
-    pdf.cell(190, 10, "Riepilogo Riposi Settimanali", ln=True, align="C")
-    pdf.ln(10)
-    
-    # Intestazione Tabella
-    pdf.set_font("Arial", "B", 10)
-    pdf.set_fill_color(200, 220, 255)
-    pdf.cell(45, 10, "Nome", 1, 0, "C", True)
-    pdf.cell(45, 10, "Cognome", 1, 0, "C", True)
-    pdf.cell(50, 10, "Mansione", 1, 0, "C", True)
-    pdf.cell(50, 10, "Giorno Riposo", 1, 1, "C", True)
-    
-    # Dati
-    pdf.set_font("Arial", "", 9)
-    # Ordiniamo per giorno di riposo per rendere il PDF più leggibile
-    df_sorted = df.copy()
-    for _, row in df_sorted.iterrows():
-        pdf.cell(45, 10, str(row["Nome"]), 1)
-        pdf.cell(45, 10, str(row["Cognome"]), 1)
-        pdf.cell(50, 10, str(row["Mansione"]), 1)
-        pdf.cell(50, 10, str(row["GiornoRiposoSettimanale"]), 1, 1)
-    
-    # Ritorna i bytes del PDF
-    return pdf.output(dest="S").encode("latin-1", errors="replace")
 import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
@@ -251,41 +221,26 @@ if menu == "📊 Dashboard":
                     n3 = len(s_p3)
                     c3 = "#29b05c" if n3 >= r3 and r3 > 0 else "#ff4b4b" if n3 < r3 else "#808080"
                     st.markdown(genera_card(m3, c3, n3, r3, s_p3), unsafe_allow_html=True)
-# --- SEZIONE RIEPILOGO RIPOSI ---
-if menu == "📅 Riepilogo riposi settimanali":
-    st.header("Riepilogo Riposi Settimanali")
-    
-    # Recupero dati puliti
-    df_riposi = data["addetti"][["Nome", "Cognome", "Mansione", "GiornoRiposoSettimanale"]].copy()
-    
-    # Opzioni di filtro rapido a video
-    giorno_filter = st.multiselect("Filtra per giorno:", options=giorni_ita, default=None)
-    if giorno_filter:
-        df_display = df_riposi[df_riposi["GiornoRiposoSettimanale"].isin(giorno_filter)]
-    else:
-        df_display = df_riposi
-
-    # Visualizzazione tabella
-    st.dataframe(df_display, use_container_width=True, hide_index=True)
-    
-    st.markdown("---")
-    
-    # Generazione e Download PDF
-    try:
-        pdf_bytes = export_riposi_pdf(df_display)
-        
-        col_btn, _ = st.columns([1, 2])
-        with col_btn:
-            st.download_button(
-                label="📥 Scarica Riepilogo PDF",
-                data=pdf_bytes,
-                file_name=f"riepilogo_riposi_{datetime.now().strftime('%d_%m_%Y')}.pdf",
-                mime="application/pdf",
-                key="download-pdf-riposi"
-            )
-        st.caption("Il PDF conterrà i dati attualmente visualizzati nella tabella sopra.")
-    except Exception as e:
-        st.error(f"Errore nella generazione del PDF: {e}")
+# --- 2. RIEPILOGO RIPOSI ---
+elif menu == "📅 Riepilogo Riposi Settimanali":
+    st.header("Riepilogo Giorni di Riposo")
+    for m in lista_postazioni:
+        with st.expander(f"📍 {m}", expanded=True):
+            add_m = data["addetti"][data["addetti"]["Mansione"] == m]
+            c_rip = st.columns(7)
+            for i, g in enumerate(giorni_ita):
+                with c_rip[i]:
+                    st.markdown(f"<div style='text-align:center; background:rgba(128,128,128,0.2); padding:5px; border-radius:5px; margin-bottom:12px;'><b>{g}</b></div>", unsafe_allow_html=True)
+                    chi = add_m[add_m["GiornoRiposoSettimanale"] == g]
+                    for _, r in chi.iterrows():
+                        st.markdown(f"<div style='text-align: center; background-color: rgba(31, 119, 180, 0.1); padding: 10px 5px; border-radius: 5px; margin: 10px 0px; font-size: 14px; font-weight: 500; border: 1px solid rgba(31, 119, 180, 0.3);'>{r['Nome']} {r['Cognome']}</div>", unsafe_allow_html=True)
+            non_def = add_m[add_m["GiornoRiposoSettimanale"] == "Non Definito"]
+            if not non_def.empty:
+                st.markdown("<div style='margin-top: 25px; border-top: 1px solid rgba(128,128,128,0.3); padding-top: 15px;'><b>Riposo Non Definito:</b></div>", unsafe_allow_html=True)
+                html_nd = '<div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; margin-bottom: 20px;">'
+                for _, r in non_def.iterrows():
+                    html_nd += f"<div style='border: 2px solid #ffa500; padding: 8px 15px; border-radius: 8px; font-weight: bold; background-color: rgba(255, 165, 0, 0.1); color: #333;'>{r['Nome']} {r['Cognome']}</div>"
+                st.markdown(html_nd + '</div>', unsafe_allow_html=True)
 
 # --- 3. GESTIONE RIPOSI RAPIDA ---
 elif menu == "📝 Gestione Riposi Rapida":
