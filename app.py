@@ -135,13 +135,28 @@ if menu == "📊 Dashboard":
             if pd.isna(s): return ""
             return str(s).strip().upper()
 
+        # Funzione interna per generare la card HTML
+        def genera_card(titolo, color, num, req, staff_list):
+            nomi_html = "".join([f"<div style='font-size: 13px; border-bottom: 1px solid #f0f0f0; padding: 4px 0; color: #444;'>• {r['Nome']} {r['Cognome']}</div>" for _, r in staff_list.iterrows()])
+            if not nomi_html: nomi_html = "<div style='color:gray; font-size:12px; font-style:italic;'>Nessuno disponibile</div>"
+            
+            return f"""
+                <div style="border: 1px solid #ddd; border-radius: 10px; margin-bottom: 15px; background: white; box-shadow: 2px 2px 5px rgba(0,0,0,0.05);">
+                    <div style="background: {color}; color: white; padding: 8px; border-radius: 10px 10px 0 0; text-align: center; font-weight: bold; font-size: 13px;">{titolo.upper()}</div>
+                    <div style="padding: 12px; text-align: center;">
+                        <div style="font-size: 22px; font-weight: bold; color: #333;">{num} / {req}</div>
+                        <div style="margin-top: 8px; text-align: left; border-top: 1px solid #eee; padding-top: 5px;">{nomi_html}</div>
+                    </div>
+                </div>
+            """
+
         tabs = st.tabs([d.strftime("%d/%m") for d in date_aperte])
         for idx, t in enumerate(tabs):
             with t:
                 d_tab = date_aperte[idx]
                 giorno_sett_oggi = norm(giorni_ita[d_tab.weekday()])
                 
-                # 1. FILTRI DATI (Fabbisogno e Disponibilità)
+                # 1. FILTRI DATI
                 df_f = data["fabbisogno"].copy()
                 df_f['d_pure'] = df_f['Data'].apply(to_date_only)
                 fabb_oggi = df_f[df_f['d_pure'] == d_tab]
@@ -164,48 +179,48 @@ if menu == "📊 Dashboard":
                     (~staff_base["ID_UNICO"].isin(lista_nera_nomi))
                 ].copy()
 
-                # Funzione interna per generare la card HTML
-                def genera_card(titolo, color, num, req, staff_list):
-                    nomi_html = "".join([f"<div style='font-size: 13px; border-bottom: 1px solid #f0f0f0; padding: 4px 0; color: #444;'>• {r['Nome']} {r['Cognome']}</div>" for _, r in staff_list.iterrows()])
-                    if not nomi_html: nomi_html = "<div style='color:gray; font-size:12px; font-style:italic;'>Nessuno disponibile</div>"
-                    
-                    return f"""
-                        <div style="border: 1px solid #ddd; border-radius: 10px; margin-bottom: 20px; background: white; box-shadow: 2px 2px 5px rgba(0,0,0,0.05);">
-                            <div style="background: {color}; color: white; padding: 10px; border-radius: 10px 10px 0 0; text-align: center; font-weight: bold;">{titolo.upper()}</div>
-                            <div style="padding: 15px; text-align: center;">
-                                <div style="font-size: 24px; font-weight: bold; color: #333;">{num} / {req}</div>
-                                <div style="margin-top: 10px; text-align: left; border-top: 1px solid #eee; padding-top: 8px;">{nomi_html}</div>
-                            </div>
-                        </div>
-                    """
-
-                # 3. LOGICA DI RENDERING (Layout a griglia specifica)
-                # Prima riga: Attrazioni | Bagnanti | Radio
+                # 3. LAYOUT A 3 COLONNE "MASONRY"
                 col1, col2, col3 = st.columns(3)
-                
-                for col, m_nome in zip([col1, col2, col3], ["Addetto Attrazioni", "Assistente Bagnanti", "Radio"]):
-                    staff_p = presenti_effettivi[presenti_effettivi["Mansione"].apply(norm) == norm(m_nome)]
-                    f_row = fabb_oggi[fabb_oggi["Mansione"].apply(norm) == norm(m_nome)]
-                    req = int(f_row["Quantita"].iloc[0]) if not f_row.empty else 0
-                    num = len(staff_p)
-                    color = "#29b05c" if num >= req and req > 0 else "#ff4b4b" if num < req else "#808080"
-                    if req == 0: color = "#808080"
-                    
-                    col.markdown(genera_card(m_nome, color, num, req, staff_p), unsafe_allow_html=True)
 
-                # Seconda riga: Vuoto | Bungee Jumping | Vuoto
-                # (Usiamo di nuovo 3 colonne per mantenere l'allineamento perfetto sotto Bagnanti)
-                row2_col1, row2_col2, row2_col3 = st.columns(3)
-                
-                m_bungee = "Bungee Jumping"
-                staff_b = presenti_effettivi[presenti_effettivi["Mansione"].apply(norm) == norm(m_bungee)]
-                f_b = fabb_oggi[fabb_oggi["Mansione"].apply(norm) == norm(m_bungee)]
-                req_b = int(f_b["Quantita"].iloc[0]) if not f_b.empty else 0
-                num_b = len(staff_b)
-                color_b = "#29b05c" if num_b >= req_b and req_b > 0 else "#ff4b4b" if num_b < req_b else "#808080"
-                if req_b == 0: color_b = "#808080"
+                # --- COLONNA 1: ATTRAZIONI ---
+                with col1:
+                    m = "Addetto Attrazioni"
+                    s_p = presenti_effettivi[presenti_effettivi["Mansione"].apply(norm) == norm(m)]
+                    f_r = fabb_oggi[fabb_oggi["Mansione"].apply(norm) == norm(m)]
+                    r = int(f_r["Quantita"].iloc[0]) if not f_r.empty else 0
+                    n = len(s_p)
+                    c = "#29b05c" if n >= r and r > 0 else "#ff4b4b" if n < r else "#808080"
+                    st.markdown(genera_card(m, c, n, r, s_p), unsafe_allow_html=True)
 
-                row2_col2.markdown(genera_card(m_bungee, color_b, num_b, req_b, staff_b), unsafe_allow_html=True)
+                # --- COLONNA 2: BAGNANTI + BUNGEE (Insieme per stare vicini) ---
+                with col2:
+                    # Assistente Bagnanti
+                    m1 = "Assistente Bagnanti"
+                    s_p1 = presenti_effettivi[presenti_effettivi["Mansione"].apply(norm) == norm(m1)]
+                    f_r1 = fabb_oggi[fabb_oggi["Mansione"].apply(norm) == norm(m1)]
+                    r1 = int(f_r1["Quantita"].iloc[0]) if not f_r1.empty else 0
+                    n1 = len(s_p1)
+                    c1 = "#29b05c" if n1 >= r1 and r1 > 0 else "#ff4b4b" if n1 < r1 else "#808080"
+                    st.markdown(genera_card(m1, c1, n1, r1, s_p1), unsafe_allow_html=True)
+
+                    # Bungee Jumping (Subito sotto nella stessa colonna)
+                    m2 = "Bungee Jumping"
+                    s_p2 = presenti_effettivi[presenti_effettivi["Mansione"].apply(norm) == norm(m2)]
+                    f_r2 = fabb_oggi[fabb_oggi["Mansione"].apply(norm) == norm(m2)]
+                    r2 = int(f_r2["Quantita"].iloc[0]) if not f_r2.empty else 0
+                    n2 = len(s_p2)
+                    c2 = "#29b05c" if n2 >= r2 and r2 > 0 else "#ff4b4b" if n2 < r2 else "#808080"
+                    st.markdown(genera_card(m2, c2, n2, r2, s_p2), unsafe_allow_html=True)
+
+                # --- COLONNA 3: RADIO ---
+                with col3:
+                    m3 = "Radio"
+                    s_p3 = presenti_effettivi[presenti_effettivi["Mansione"].apply(norm) == norm(m3)]
+                    f_r3 = fabb_oggi[fabb_oggi["Mansione"].apply(norm) == norm(m3)]
+                    r3 = int(f_r3["Quantita"].iloc[0]) if not f_r3.empty else 0
+                    n3 = len(s_p3)
+                    c3 = "#29b05c" if n3 >= r3 and r3 > 0 else "#ff4b4b" if n3 < r3 else "#808080"
+                    st.markdown(genera_card(m3, c3, n3, r3, s_p3), unsafe_allow_html=True)
 # --- 2. RIEPILOGO RIPOSI ---
 elif menu == "📅 Riepilogo Riposi Settimanali":
     st.header("Riepilogo Giorni di Riposo")
