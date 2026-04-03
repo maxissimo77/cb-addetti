@@ -64,7 +64,7 @@ giorni_ita = list(mappa_giorni.keys())
 opzioni_riposo = giorni_ita + ["Non Definito"]
 lista_postazioni = data["postazioni"]["Nome Postazione"].dropna().unique().tolist() if not data["postazioni"].empty else ["Generico"]
 
-# --- FUNZIONE CALENDARIO (REINSERITA) ---
+# --- FUNZIONE CALENDARIO ---
 def genera_mini_calendario(df_persona, riposo_fisso, anno, mese):
     nomi_mesi_ita = {5: "MAGGIO", 6: "GIUGNO", 7: "LUGLIO", 8: "AGOSTO", 9: "SETTEMBRE"}
     st.markdown(f"<div style='text-align: center; background-color: #1f77b4; color: white; padding: 5px; border-radius: 5px; margin-bottom: 5px;'><b>{nomi_mesi_ita.get(mese, 'Mese')}</b></div>", unsafe_allow_html=True)
@@ -140,7 +140,7 @@ if menu == "📊 Dashboard":
                         st.metric(post, f"{len(presenti)}/{req}", delta=len(presenti)-req)
                         for _, r in presenti.iterrows(): st.caption(f"• {r['Nome']} {r['Cognome']}")
 
-# --- 2. RIEPILOGO RIPOSI (RE-INTERFACCIA COMPLETA) ---
+# --- 2. RIEPILOGO RIPOSI ---
 elif menu == "📅 Riepilogo Riposi Settimanali":
     st.header("Riepilogo Giorni di Riposo")
     for m in lista_postazioni:
@@ -162,7 +162,51 @@ elif menu == "📅 Riepilogo Riposi Settimanali":
                     html_nd += f"<div style='border: 2px solid #ffa500; padding: 8px 15px; border-radius: 8px; font-weight: bold; background-color: rgba(255, 165, 0, 0.1); color: #333;'>{r['Nome']} {r['Cognome']}</div>"
                 st.markdown(html_nd + '</div>', unsafe_allow_html=True)
 
-# --- 4. AREA DISPONIBILITÀ (RE-INTERFACCIA COMPLETA) ---
+# --- 3. GESTIONE RIPOSI RAPIDA (RE-INTERFACCIA COMPLETA) ---
+elif menu == "📝 Gestione Riposi Rapida":
+    st.header("Gestione Rapida Riposi Settimanali")
+    st.info("In questa sezione puoi modificare velocemente i giorni di riposo fisso di tutto lo staff.")
+    
+    df_mod = data["addetti"].copy()
+    
+    for m in lista_postazioni:
+        add_m = df_mod[df_mod["Mansione"] == m]
+        if not add_m.empty:
+            st.markdown(f"### 📍 {m}")
+            
+            # Contatori di riepilogo per mansione
+            conteggi = add_m["GiornoRiposoSettimanale"].value_counts()
+            cols_c = st.columns(7)
+            for i, g in enumerate(giorni_ita):
+                n_rip = conteggi.get(g, 0)
+                with cols_c[i]: 
+                    st.markdown(f"<div style='text-align:center; background:rgba(128,128,128,0.05); border: 1px solid rgba(128,128,128,0.1); border-radius:5px; padding:5px;'><small>{g[:3]}</small><br><b style='color:#1f77b4;'>{n_rip}</b></div>", unsafe_allow_html=True)
+            
+            st.markdown("<div style='margin-bottom:15px;'></div>", unsafe_allow_html=True)
+
+            # Lista dipendenti con selectbox
+            for idx, row in add_m.iterrows():
+                col_nome, col_scelta = st.columns([2, 1])
+                with col_nome:
+                    st.markdown(f"<div style='padding: 8px 0;'>{row['Nome']} <b>{row['Cognome']}</b></div>", unsafe_allow_html=True)
+                with col_scelta:
+                    idx_r = opzioni_riposo.index(row['GiornoRiposoSettimanale']) if row['GiornoRiposoSettimanale'] in opzioni_riposo else 7
+                    df_mod.at[idx, 'GiornoRiposoSettimanale'] = st.selectbox(
+                        f"Riposo per {row['Nome']} {row['Cognome']}", 
+                        opzioni_riposo, 
+                        index=idx_r, 
+                        key=f"r_rap_{idx}", 
+                        label_visibility="collapsed"
+                    )
+            st.markdown("---")
+            
+    if st.button("💾 Salva Tutte le Modifiche", type="primary", use_container_width=True):
+        conn.update(worksheet="Addetti", data=df_mod)
+        st.cache_data.clear()
+        st.success("Modifiche salvate con successo!")
+        st.rerun()
+
+# --- 4. AREA DISPONIBILITÀ ---
 elif menu == "📅 Area Disponibilità Staff":
     st.header("Calendario Disponibilità Individuale")
     df_t = data["addetti"].copy()
@@ -171,8 +215,7 @@ elif menu == "📅 Area Disponibilità Staff":
     row_d = df_t[df_t['Full'] == sel_dip].iloc[0]
     df_p = data["disp"][(data["disp"]["Nome"] == row_d['Nome']) & (data["disp"]["Cognome"] == row_d['Cognome'])]
     
-    st.info(f"Stagione Caribe Bay: dal **{data_apertura.strftime('%d/%m')}** al **{data_chiusura.strftime('%d/%m')}**")
-    st.markdown("""<div style='display: flex; gap: 15px; margin-bottom: 15px;'><div style='background:#ff4b4b; color:white; padding:5px 12px; border-radius:5px; font-size: 14px;'><b>🔴 NON Disponibile</b></div><div style='background:#ffa500; color:white; padding:5px 12px; border-radius:5px; font-size: 14px;'><b>🟠 Riposo Fisso</b></div><div style='background:#29b05c; color:white; padding:5px 12px; border-radius:5px; font-size: 14px;'><b>🟢 Disponibile</b></div></div>""", unsafe_allow_html=True)
+    st.info(f"Stagione: **{data_apertura.strftime('%d/%m')}** - **{data_chiusura.strftime('%d/%m')}**")
     
     c_cal = st.columns(5)
     for idx, m in enumerate([5, 6, 7, 8, 9]):
@@ -189,27 +232,7 @@ elif menu == "📅 Area Disponibilità Staff":
             conn.update(worksheet="Disponibilita", data=pd.concat([old, nuovi], ignore_index=True))
             st.cache_data.clear(); st.rerun()
 
-# --- TUTTE LE ALTRE SEZIONI (MANTENUTE) ---
-elif menu == "📝 Gestione Riposi Rapida":
-    st.header("Gestione Rapida Riposi")
-    df_mod = data["addetti"].copy()
-    for m in lista_postazioni:
-        add_m = df_mod[df_mod["Mansione"] == m]
-        if not add_m.empty:
-            st.subheader(f"📍 {m}")
-            conteggi = add_m["GiornoRiposoSettimanale"].value_counts()
-            cols_c = st.columns(7)
-            for i, g in enumerate(giorni_ita):
-                n_rip = conteggi.get(g, 0)
-                with cols_c[i]: st.markdown(f"<div style='text-align:center;'><small>{g[:3]}</small><br><b>{n_rip}</b></div>", unsafe_allow_html=True)
-            for idx, row in add_m.iterrows():
-                c1, c2 = st.columns([2, 1])
-                c1.write(f"**{row['Nome']} {row['Cognome']}**")
-                idx_r = opzioni_riposo.index(row['GiornoRiposoSettimanale']) if row['GiornoRiposoSettimanale'] in opzioni_riposo else 7
-                df_mod.at[idx, 'GiornoRiposoSettimanale'] = c2.selectbox(f"Riposo {idx}", opzioni_riposo, index=idx_r, key=f"r_rap_{idx}", label_visibility="collapsed")
-    if st.button("💾 Salva Modifiche", type="primary", use_container_width=True):
-        conn.update(worksheet="Addetti", data=df_mod); st.cache_data.clear(); st.rerun()
-
+# --- ALTRE SEZIONI ---
 elif menu == "⚙️ Pianifica Fabbisogno":
     st.header("Gestione Fabbisogno Staff")
     tipo = st.radio("Modalità:", ["Giorno Singolo", "Intervallo"], horizontal=True)
