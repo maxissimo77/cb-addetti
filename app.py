@@ -1,4 +1,62 @@
+import streamlit as st
+from streamlit_gsheets import GSheetsConnection
+import pandas as pd
+from datetime import datetime, timedelta
+import calendar
 
+# --- CONFIGURAZIONE PAGINA ---
+st.set_page_config(
+    page_title="Caribe Bay - Staff", 
+    layout="wide", 
+    page_icon="https://www.caribebay.it/favicon.ico"
+)
+pd.options.mode.string_storage = "python"
+
+# --- CONNESSIONE ---
+conn = st.connection("gsheets", type=GSheetsConnection)
+
+# --- CARICAMENTO DATI ---
+@st.cache_data(ttl=10)
+def get_data():
+    return {
+        "addetti": conn.read(worksheet="Addetti"),
+        "disp": conn.read(worksheet="Disponibilita"),
+        "fabbisogno": conn.read(worksheet="Fabbisogno"),
+        "postazioni": conn.read(worksheet="Postazioni"),
+        "config": conn.read(worksheet="Config")
+    }
+
+data = get_data()
+
+# --- LOGICA DATE STAGIONE ---
+try:
+    conf_df = data["config"]
+    data_apertura = pd.to_datetime(conf_df[conf_df["Ruolo"] == "Apertura"]["Password"].values[0]).date()
+    data_chiusura = pd.to_datetime(conf_df[conf_df["Ruolo"] == "Chiusura"]["Password"].values[0]).date()
+except:
+    data_apertura = datetime(2026, 5, 16).date()
+    data_chiusura = datetime(2026, 9, 13).date()
+
+# --- SISTEMA DI LOGIN ---
+def check_password():
+    if "role" not in st.session_state:
+        st.title("🌊 Caribe Bay - Staff Login")
+        pwd_input = st.text_input("Inserisci Password", type="password")
+        if st.button("Accedi"):
+            try:
+                conf = data["config"]
+                conf.columns = conf.columns.str.strip()
+                admin_pwd = str(conf[conf["Ruolo"] == "Admin"]["Password"].values[0])
+                user_pwd = str(conf[conf["Ruolo"] == "User"]["Password"].values[0])
+                if pwd_input == admin_pwd:
+                    st.session_state["role"] = "Admin"
+                    st.rerun()
+                elif pwd_input == user_pwd:
+                    st.session_state["role"] = "User"
+                    st.rerun()
+                else: st.error("❌ Password errata.")
+            except: st.error("⚠️ Errore nel foglio 'Config'.")
+        return False
     return True
 
 if not check_password():
