@@ -146,15 +146,12 @@ if menu == "📊 Dashboard":
                 df_f['d_pure'] = df_f['Data'].apply(to_date_only)
                 fabb_oggi = df_f[df_f['d_pure'] == d_tab]
                 
-                # 2. IDENTIFICAZIONE ASSENTI (Tabella Disponibilità)
+                # 2. IDENTIFICAZIONE ASSENTI
                 df_dis = data["disp"].copy()
                 df_dis['d_pure'] = df_dis['Data'].apply(to_date_only)
                 disp_oggi = df_dis[df_dis['d_pure'] == d_tab]
-                
-                # Applichiamo la normalizzazione allo stato per il confronto
                 disp_oggi["Stato_Norm"] = disp_oggi["Stato"].apply(norm)
                 
-                # Chiunque abbia uno stato che NON è "DISPONIBILE" viene escluso
                 nomi_assenti = disp_oggi[disp_oggi["Stato_Norm"] != "DISPONIBILE"]
                 lista_nera_nomi = (nomi_assenti["Nome"].apply(norm) + nomi_assenti["Cognome"].apply(norm)).tolist()
 
@@ -163,15 +160,19 @@ if menu == "📊 Dashboard":
                 staff_base["ID_UNICO"] = staff_base["Nome"].apply(norm) + staff_base["Cognome"].apply(norm)
                 staff_base["RIPOSO_NORM"] = staff_base["GiornoRiposoSettimanale"].apply(norm)
 
-                # FILTRO DOPPIO: No riposo oggi E non presente in lista nera assenze
                 presenti_effettivi = staff_base[
                     (staff_base["RIPOSO_NORM"] != giorno_sett_oggi) & 
                     (~staff_base["ID_UNICO"].isin(lista_nera_nomi))
                 ].copy()
 
-                # 4. RENDERING CARD
-                cols = st.columns(3)
-                for i, post in enumerate(lista_postazioni):
+                # 4. ORDINAMENTO PERSONALIZZATO (Addetto Attrazioni a sinistra)
+                # Definiamo l'ordine desiderato delle mansioni
+                ordine_postazioni = ["Addetto Attrazioni", "Assistente Bagnanti", "Radio"]
+                
+                # Creiamo le colonne
+                cols = st.columns(len(ordine_postazioni))
+                
+                for i, post in enumerate(ordine_postazioni):
                     p_norm = norm(post)
                     staff_post = presenti_effettivi[presenti_effettivi["Mansione"].apply(norm) == p_norm]
                     
@@ -185,16 +186,16 @@ if menu == "📊 Dashboard":
                     color = "#29b05c" if num_pres >= req and req > 0 else "#ff4b4b" if num_pres < req else "#808080"
                     if req == 0: color = "#808080"
 
-                    with cols[i % 3]:
+                    with cols[i]:
                         st.markdown(f"""
                             <div style="border: 1px solid #ddd; border-radius: 10px; margin-bottom: 20px; background: white; box-shadow: 2px 2px 5px rgba(0,0,0,0.05);">
                                 <div style="background: {color}; color: white; padding: 10px; border-radius: 10px 10px 0 0; text-align: center; font-weight: bold;">
                                     {post.upper()}
                                 </div>
                                 <div style="padding: 15px; text-align: center;">
-                                    <div style="font-size: 24px; font-weight: bold;">{num_pres} / {req}</div>
-                                    <div style="margin-top: 10px; text-align: left; border-top: 1px solid #eee; padding-top: 5px; height: 120px; overflow-y: auto;">
-                                        {"".join([f"<div style='font-size: 12px; border-bottom: 1px solid #f0f0f0; padding: 2px 0;'>• {r['Nome']} {r['Cognome']}</div>" for _, r in staff_post.iterrows()]) if not staff_post.empty else "<div style='color:gray; font-size:11px;'>Nessun disponibile</div>"}
+                                    <div style="font-size: 24px; font-weight: bold; color: #333;">{num_pres} / {req}</div>
+                                    <div style="margin-top: 10px; text-align: left; border-top: 1px solid #eee; padding-top: 8px;">
+                                        {"".join([f"<div style='font-size: 13px; border-bottom: 1px solid #f0f0f0; padding: 4px 0; color: #444;'>• {r['Nome']} {r['Cognome']}</div>" for _, r in staff_post.iterrows()]) if not staff_post.empty else "<div style='color:gray; font-size:12px; font-style:italic;'>Nessuno disponibile</div>"}
                                     </div>
                                 </div>
                             </div>
