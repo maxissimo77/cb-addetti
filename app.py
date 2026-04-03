@@ -104,7 +104,7 @@ if st.sidebar.button("Logout"):
     for key in list(st.session_state.keys()): del st.session_state[key]
     st.rerun()
 
-# --- 1. DASHBOARD (VERSIONE CARD) ---
+# --- 1. DASHBOARD ---
 if menu == "📊 Dashboard":
     st.header("Stato Occupazione Postazioni")
     input_d = st.date_input("Inizio visualizzazione (settimana):", default_date)
@@ -137,7 +137,6 @@ if menu == "📊 Dashboard":
                     f_row = fabb[fabb["Mansione"] == post]
                     req = int(f_row["Quantita"].iloc[0]) if not f_row.empty else 0
                     num_pres = len(presenti)
-                    
                     color_status = "#29b05c" if num_pres >= req and req > 0 else "#ff4b4b" if num_pres < req else "#1f77b4"
                     if req == 0: color_status = "#808080"
 
@@ -155,19 +154,39 @@ if menu == "📊 Dashboard":
                             </div>
                         """, unsafe_allow_html=True)
 
-# --- 2. RIEPILOGO RIPOSI ---
+# --- 2. RIEPILOGO RIPOSI (RIPRISTINATO COMPLETO) ---
 elif menu == "📅 Riepilogo Riposi Settimanali":
-    st.header("Riepilogo Giorni di Riposo")
+    st.header("Riepilogo Giorni di Riposo Fisso")
     for m in lista_postazioni:
         with st.expander(f"📍 {m}", expanded=True):
             add_m = data["addetti"][data["addetti"]["Mansione"] == m]
             c_rip = st.columns(7)
             for i, g in enumerate(giorni_ita):
                 with c_rip[i]:
-                    st.markdown(f"<div style='text-align:center; background:rgba(128,128,128,0.2); padding:5px; border-radius:5px; margin-bottom:12px;'><b>{g}</b></div>", unsafe_allow_html=True)
+                    st.markdown(f"<div style='text-align:center; background:rgba(128,128,128,0.2); padding:5px; border-radius:5px; margin-bottom:12px; font-size:14px;'><b>{g}</b></div>", unsafe_allow_html=True)
                     chi = add_m[add_m["GiornoRiposoSettimanale"] == g]
                     for _, r in chi.iterrows():
-                        st.markdown(f"<div style='text-align: center; background-color: rgba(31, 119, 180, 0.1); padding: 10px 5px; border-radius: 5px; margin: 10px 0px; font-size: 14px; font-weight: 500; border: 1px solid rgba(31, 119, 180, 0.3);'>{r['Nome']} {r['Cognome']}</div>", unsafe_allow_html=True)
+                        st.markdown(f"""
+                            <div style="text-align: center; background-color: rgba(31, 119, 180, 0.1); 
+                            padding: 10px 5px; border-radius: 5px; margin: 8px 0px; font-size: 13px; 
+                            font-weight: 500; border: 1px solid rgba(31, 119, 180, 0.3);">
+                                {r['Nome']} {r['Cognome']}
+                            </div>
+                        """, unsafe_allow_html=True)
+            
+            # Sezione Riposi Non Definiti
+            non_def = add_m[add_m["GiornoRiposoSettimanale"] == "Non Definito"]
+            if not non_def.empty:
+                st.markdown("<div style='margin-top: 20px; border-top: 1px solid rgba(128,128,128,0.3); padding-top: 15px;'><b>⚠️ Riposo Settimanale NON ancora assegnato:</b></div>", unsafe_allow_html=True)
+                html_nd = '<div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px;">'
+                for _, r in non_def.iterrows():
+                    html_nd += f"""
+                        <div style='border: 2px solid #ffa500; padding: 6px 12px; border-radius: 8px; 
+                        font-weight: bold; background-color: rgba(255, 165, 0, 0.1); color: #333; font-size: 12px;'>
+                            {r['Nome']} {r['Cognome']}
+                        </div>
+                    """
+                st.markdown(html_nd + '</div>', unsafe_allow_html=True)
 
 # --- 3. GESTIONE RIPOSI RAPIDA ---
 elif menu == "📝 Gestione Riposi Rapida":
