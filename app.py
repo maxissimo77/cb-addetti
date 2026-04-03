@@ -1,221 +1,203 @@
-import streamlit as st
-from streamlit_gsheets import GSheetsConnection
-import pandas as pd
-from datetime import datetime, timedelta
-import calendar
 
-# --- CONFIGURAZIONE E COSTANTI ---
-STAGIONE_ANNO = 2026
-MAPPA_GIORNI = {
-    "Lunedì": 0, "Martedì": 1, "Mercoledì": 2, "Giovedì": 3, 
-    "Venerdì": 4, "Sabato": 5, "Domenica": 6
-}
-GIORNI_ITA = list(MAPPA_GIORNI.keys())
-
-st.set_page_config(
-    page_title="Caribe Bay - Staff", 
-    layout="wide", 
-    page_icon="https://www.caribebay.it/favicon.ico"
-)
-
-# --- FUNZIONI DI SERVIZIO ---
-
-@st.cache_data(ttl=60)
-def load_all_data():
-    """Carica tutti i fogli necessari dal Google Sheet."""
-    conn = st.connection("gsheets", type=GSheetsConnection)
-    try:
-        return {
-            "addetti": conn.read(worksheet="Addetti"),
-            "disp": conn.read(worksheet="Disponibilita"),
-            "fabbisogno": conn.read(worksheet="Fabbisogno"),
-            "postazioni": conn.read(worksheet="Postazioni"),
-            "config": conn.read(worksheet="Config")
-        }
-    except Exception as e:
-        st.error(f"Errore nel caricamento dati: {e}")
-        return None
-
-def save_to_gsheets(worksheet_name, df):
-    """Utility per aggiornare i dati e pulire la cache."""
-    conn = st.connection("gsheets", type=GSheetsConnection)
-    conn.update(worksheet=worksheet_name, data=df)
-    st.cache_data.clear()
-
-def get_config_value(df, ruolo, default):
-    """Recupera valori di configurazione in modo sicuro."""
-    try:
-        val = df[df["Ruolo"] == ruolo]["Password"].values[0]
-        return val
-    except:
-        return default
-
-# --- LOGICA DI AUTENTICAZIONE ---
-
-def check_password(config_df):
-    if "role" not in st.session_state:
-        st.title("🌊 Caribe Bay - Staff Login")
-        with st.container(border=True):
-            pwd_input = st.text_input("Inserisci Password", type="password")
-            if st.button("Accedi", use_container_width=True):
-                admin_pwd = str(get_config_value(config_df, "Admin", "admin123"))
-                user_pwd = str(get_config_value(config_df, "User", "user123"))
-                
-                if pwd_input == admin_pwd:
-                    st.session_state["role"] = "Admin"
-                    st.rerun()
-                elif pwd_input == user_pwd:
-                    st.session_state["role"] = "User"
-                    st.rerun()
-                else:
-                    st.error("❌ Password errata.")
-        return False
     return True
 
-# --- COMPONENTI UI ---
+if not check_password():
+    st.stop()
 
-def ui_mini_calendario(df_persona, riposo_fisso, mese, d_apertura, d_chiusura):
-    """Genera la tabella HTML del calendario mensile."""
-    nomi_mesi = {5: "MAGGIO", 6: "GIUGNO", 7: "LUGLIO", 8: "AGOSTO", 9: "SETTEMBRE"}
-    idx_riposo = MAPPA_GIORNI.get(riposo_fisso, -1)
-    cal = calendar.monthcalendar(STAGIONE_ANNO, mese)
-    
-    st.markdown(f"""
-        <div style='text-align: center; background-color: #1f77b4; color: white; 
-        padding: 5px; border-radius: 5px; font-weight: bold; margin-bottom: 5px;'>
-            {nomi_mesi.get(mese, "")}
-        </div>
-    """, unsafe_allow_html=True)
-    
-    html = '<table style="width:100%; border-collapse: collapse; text-align: center; font-size: 11px; table-layout: fixed;">'
-    html += '<tr style="background:#f0f2f6;"><th>L</th><th>M</th><th>M</th><th>G</th><th>V</th><th>S</th><th>D</th></tr>'
+mappa_giorni = {"Lunedì": 0, "Martedì": 1, "Mercoledì": 2, "Giovedì": 3, "Venerdì": 4, "Sabato": 5, "Domenica": 6}
+giorni_ita = list(mappa_giorni.keys())
+opzioni_riposo = giorni_ita + ["Non Definito"]
+lista_postazioni = data["postazioni"]["Nome Postazione"].dropna().unique().tolist() if not data["postazioni"].empty else ["Generico"]
+
+# --- FUNZIONE CALENDARIO CON FILTRO APERTURA ---
+def genera_mini_calendario(df_persona, riposo_fisso, anno, mese):
+    nomi_mesi_ita = {5: "MAGGIO", 6: "GIUGNO", 7: "LUGLIO", 8: "AGOSTO", 9: "SETTEMBRE"}
+    st.markdown(f"<div style='text-align: center; background-color: #1f77b4; color: white; padding: 5px; border-radius: 5px; margin-bottom: 5px;'><b>{nomi_mesi_ita[mese]}</b></div>", unsafe_allow_html=True)
+    idx_riposo_fisso = mappa_giorni.get(riposo_fisso, -1)
+    cal = calendar.monthcalendar(anno, mese)
+    html = '<table style="width:100%; border-collapse: collapse; text-align: center; font-size: 11px; table-layout: fixed; border: 1px solid #ddd;">'
+    html += '<tr style="background:rgba(128,128,128,0.1);"><th>L</th><th>M</th><th>M</th><th>G</th><th>V</th><th>S</th><th>D</th></tr>'
     
     for week in cal:
-        html += '<tr>'
+        html += '<tr style="height: 30px;">'
         for i, day in enumerate(week):
-            if day == 0:
-                html += '<td style="border:1px solid #eee;"></td>'
-                continue
-            
-            curr_date = datetime(STAGIONE_ANNO, mese, day).date()
-            d_str = curr_date.strftime("%Y-%m-%d")
-            is_open = d_apertura <= curr_date <= d_chiusura
-            
-            bg, color, label = "white", "black", str(day)
-            
-            if not is_open:
-                bg, color, label = "#f9f9f9", "#ccc", f"<s>{day}</s>"
+            if day == 0: html += '<td style="border:1px solid rgba(128,128,128,0.1);"></td>'
             else:
-                # Controllo disponibilità specifica
-                disp_check = df_persona[df_persona["Data"].astype(str).str.contains(d_str, na=False)]
-                if not disp_check.empty and "NON" in str(disp_check["Stato"].values[0]).upper():
-                    bg, color = "#ff4b4b", "white"
-                elif i == idx_riposo:
-                    bg, color = "#ffa500", "white"
-                elif not disp_check.empty:
-                    bg, color = "#29b05c", "white"
-            
-            html += f'<td style="background:{bg}; color:{color}; border:1px solid #eee; padding:5px; font-weight:bold;">{label}</td>'
+                current_date = datetime(anno, mese, day).date()
+                d_str = f"{anno}-{mese:02d}-{day:02d}"
+                
+                # Verifichiamo se il parco è aperto
+                is_open = data_apertura <= current_date <= data_chiusura
+                
+                if not is_open:
+                    bg, tx, label = "#e0e0e0", "#9e9e9e", f"<del>{day}</del>"
+                else:
+                    stato_serie = df_persona[df_persona["Data"].astype(str).str.contains(d_str, na=False)]["Stato"]
+                    bg, tx, label = "transparent", "inherit", str(day)
+                    is_not_available = not stato_serie[stato_serie.astype(str).str.contains("NON", case=False, na=False)].empty
+                    if is_not_available: bg, tx = "#ff4b4b", "white"
+                    else:
+                        if i == idx_riposo_fisso: bg, tx = "#ffa500", "white"
+                        elif not stato_serie.empty: bg, tx = "#29b05c", "white"
+                
+                html += f'<td style="background:{bg}; color:{tx}; border:1px solid rgba(128,128,128,0.2); font-weight:bold;">{label}</td>'
         html += '</tr>'
-    
     st.markdown(html + '</table>', unsafe_allow_html=True)
 
-# --- MAIN APP ---
+# --- SIDEBAR ---
+st.sidebar.image("https://www.caribebay.it/sites/default/files/caribebay-logo.png", width=200)
+menu_options = ["📊 Dashboard", "📅 Riepilogo Riposi Settimanali"]
+if st.session_state["role"] == "Admin":
+    menu_options += ["📝 Gestione Riposi Rapida", "📅 Area Disponibilità Staff", "⚙️ Pianifica Fabbisogno", "👥 Gestione Anagrafica", "🚩 Gestione Postazioni", "⚙️ Impostazioni Stagione", "🔑 Gestione Password"]
 
-def main():
-    data = load_all_data()
-    if not data: return
+menu = st.sidebar.radio("Vai a:", menu_options)
+if st.sidebar.button("Logout"):
+    for key in list(st.session_state.keys()): del st.session_state[key]
+    st.rerun()
 
-    # Configurazione date stagione
-    d_apertura = pd.to_datetime(get_config_value(data["config"], "Apertura", "2026-05-16")).date()
-    d_chiusura = pd.to_datetime(get_config_value(data["config"], "Chiusura", "2026-09-13")).date()
+# --- SEZIONI ---
+if menu == "📊 Dashboard":
+    st.header("Dashboard")
+    dt_sel = st.date_input("Giorno:", datetime.now())
+    if not (data_apertura <= dt_sel <= data_chiusura):
+        st.warning("⚠️ Attenzione: Il parco risulta CHIUSO nella data selezionata.")
+    # Logica dashboard... (invariata)
+    st.info("Visualizzazione copertura giornaliera basata su fabbisogno e disponibilità.")
 
-    if not check_password(data["config"]):
-        return
+elif menu == "📅 Riepilogo Riposi Settimanali":
+    st.header("Riepilogo Giorni di Riposo")
+    for m in lista_postazioni:
+        with st.expander(f"📍 {m}", expanded=True):
+            add_m = data["addetti"][data["addetti"]["Mansione"] == m]
+            c_rip = st.columns(7)
+            for i, g in enumerate(giorni_ita):
+                with c_rip[i]:
+                    st.markdown(f"<div style='text-align:center; background:rgba(128,128,128,0.2); padding:5px; border-radius:5px; margin-bottom:12px;'><b>{g}</b></div>", unsafe_allow_html=True)
+                    chi = add_m[add_m["GiornoRiposoSettimanale"] == g]
+                    for _, r in chi.iterrows():
+                        st.markdown(f"<div style='text-align: center; background-color: rgba(31, 119, 180, 0.1); padding: 10px 5px; border-radius: 5px; margin-top: 8px; margin-bottom: 10px; font-size: 14px; font-weight: 500; border: 1px solid rgba(31, 119, 180, 0.3);'>{r['Nome']} {r['Cognome']}</div>", unsafe_allow_html=True)
 
-    # Sidebar Navigation
-    st.sidebar.image("https://www.caribebay.it/sites/default/files/caribebay-logo.png", width=180)
-    st.sidebar.markdown(f"**Ruolo:** {st.session_state['role']}")
-    
-    menu_options = ["📊 Dashboard", "📅 Riepilogo Riposi"]
-    if st.session_state["role"] == "Admin":
-        menu_options += ["📝 Gestione Rapida", "🗓️ Disponibilità Staff", "⚙️ Fabbisogno", "👥 Anagrafica", "🚩 Postazioni", "🔧 Config Stagione"]
-
-    choice = st.sidebar.radio("Navigazione", menu_options)
-    
-    if st.sidebar.button("Log Out", use_container_width=True):
-        st.session_state.clear()
+elif menu == "📝 Gestione Riposi Rapida":
+    st.header("Gestione Rapida Riposi")
+    df_mod = data["addetti"].copy()
+    for m in lista_postazioni:
+        add_m = df_mod[df_mod["Mansione"] == m]
+        if not add_m.empty:
+            st.subheader(f"📍 {m}")
+            conteggi = add_m["GiornoRiposoSettimanale"].value_counts()
+            cols_c = st.columns(7)
+            for i, g in enumerate(giorni_ita):
+                with cols_c[i]: st.metric(g[:3], conteggi.get(g, 0))
+            for idx, row in add_m.iterrows():
+                c1, c2 = st.columns([2, 1])
+                c1.write(f"**{row['Nome']} {row['Cognome']}**")
+                idx_r = opzioni_riposo.index(row['GiornoRiposoSettimanale']) if row['GiornoRiposoSettimanale'] in opzioni_riposo else 7
+                df_mod.at[idx, 'GiornoRiposoSettimanale'] = c2.selectbox(f"Riposo {idx}", opzioni_riposo, index=idx_r, key=f"r_r_{idx}", label_visibility="collapsed")
+    if st.button("💾 Salva Modifiche"):
+        conn.update(worksheet="Addetti", data=df_mod)
+        st.cache_data.clear()
         st.rerun()
 
-    # --- ROUTING ---
-
-    if choice == "📊 Dashboard":
-        st.header("📊 Dashboard Giornaliera")
-        sel_date = st.date_input("Data di riferimento", datetime.now().date())
-        if not (d_apertura <= sel_date <= d_chiusura):
-            st.warning(f"Il parco risulta chiuso in data {sel_date.strftime('%d/%m/%Y')}")
-        else:
-            st.success(f"Visualizzazione dati per: {sel_date.strftime('%A %d %B %Y')}")
-
-    elif choice == "📅 Riepilogo Riposi":
-        st.header("📅 Riepilogo Riposi Settimanali")
-        postazioni = data["postazioni"]["Nome Postazione"].dropna().unique()
-        for p in postazioni:
-            with st.expander(f"📍 {p}", expanded=True):
-                cols = st.columns(7)
-                for i, giorno in enumerate(GIORNI_ITA):
-                    with cols[i]:
-                        st.markdown(f"**{giorno}**")
-                        staff = data["addetti"][(data["addetti"]["Mansione"] == p) & (data["addetti"]["GiornoRiposoSettimanale"] == giorno)]
-                        for _, r in staff.iterrows():
-                            st.info(f"{r['Nome']} {r['Cognome']}")
-
-    elif choice == "📝 Gestione Rapida":
-        st.header("📝 Modifica Rapida Riposi")
-        df_mod = data["addetti"].copy()
-        postazioni = data["postazioni"]["Nome Postazione"].dropna().unique()
-        
-        for p in postazioni:
-            st.subheader(f"Reparto: {p}")
-            staff_p = df_mod[df_mod["Mansione"] == p]
-            for idx, row in staff_p.iterrows():
-                c1, c2 = st.columns([3, 2])
-                c1.write(f"{row['Nome']} {row['Cognome']}")
-                current_rip = row["GiornoRiposoSettimanale"]
-                opts = GIORNI_ITA + ["Non Definito"]
-                new_val = c2.selectbox("Riposo", opts, index=opts.index(current_rip) if current_rip in opts else len(opts)-1, key=f"rip_{idx}", label_visibility="collapsed")
-                df_mod.at[idx, "GiornoRiposoSettimanale"] = new_val
-            st.divider()
-        
-        if st.button("💾 Salva Modifiche", type="primary"):
-            save_to_gsheets("Addetti", df_mod)
-            st.success("Dati aggiornati correttamente!")
+elif menu == "📅 Area Disponibilità Staff":
+    st.header("Gestione Disponibilità")
+    df_t = data["addetti"].copy()
+    df_t['Full'] = df_t['Nome'] + " " + df_t['Cognome']
+    sel_dip = st.selectbox("Seleziona dipendente:", df_t['Full'].tolist())
+    row_d = df_t[df_t['Full'] == sel_dip].iloc[0]
+    df_p = data["disp"][(data["disp"]["Nome"] == row_d['Nome']) & (data["disp"]["Cognome"] == row_d['Cognome'])]
+    st.info(f"Stagione Caribe Bay 2026: dal {data_apertura.strftime('%d/%m')} al {data_chiusura.strftime('%d/%m')}")
+    st.markdown("""<div style='display: flex; gap: 10px; margin-bottom: 10px;'><div style='background:#e0e0e0; color:#9e9e9e; padding:5px 10px; border-radius:5px;'><b>Parco Chiuso</b></div><div style='background:#ff4b4b; color:white; padding:5px 10px; border-radius:5px;'><b>NON Disponibile</b></div><div style='background:#ffa500; color:white; padding:5px 10px; border-radius:5px;'><b>Riposo Fisso</b></div></div>""", unsafe_allow_html=True)
+    c_cal = st.columns(5)
+    for idx, m in enumerate([5, 6, 7, 8, 9]):
+        with c_cal[idx]: genera_mini_calendario(df_p, row_d['GiornoRiposoSettimanale'], 2026, m)
+    with st.expander("Modifica Disponibilità"):
+        dr = st.date_input("Periodo:", value=[], min_value=data_apertura, max_value=data_chiusura)
+        st_r = st.radio("Stato:", ["Disponibile", "NON Disponibile"])
+        if st.button("Salva Date") and len(dr) == 2:
+            d_list = [str(dr[0] + timedelta(days=x)) for x in range((dr[1]-dr[0]).days + 1)]
+            nuovi = pd.DataFrame([{"Nome": row_d['Nome'], "Cognome": row_d['Cognome'], "Data": d, "Stato": st_r} for d in d_list])
+            old = data["disp"][~((data["disp"]["Nome"] == row_d['Nome']) & (data["disp"]["Cognome"] == row_d['Cognome']) & (data["disp"]["Data"].astype(str).isin(d_list)))]
+            conn.update(worksheet="Disponibilita", data=pd.concat([old, nuovi], ignore_index=True))
+            st.cache_data.clear()
             st.rerun()
 
-    elif choice == "🗓️ Disponibilità Staff":
-        st.header("🗓️ Calendario Disponibilità")
-        data["addetti"]["Full"] = data["addetti"]["Nome"] + " " + data["addetti"]["Cognome"]
-        persona = st.selectbox("Seleziona Membro Staff", data["addetti"]["Full"].tolist())
-        
-        row = data["addetti"][data["addetti"]["Full"] == persona].iloc[0]
-        disp_pers = data["disp"][(data["disp"]["Nome"] == row["Nome"]) & (data["disp"]["Cognome"] == row["Cognome"])]
-        
-        cols = st.columns(5)
-        for i, m in enumerate([5, 6, 7, 8, 9]):
-            with cols[i]:
-                ui_mini_calendario(disp_pers, row["GiornoRiposoSettimanale"], m, d_apertura, d_chiusura)
+elif menu == "⚙️ Pianifica Fabbisogno":
+    st.header("Fabbisogno Personale")
+    tipo = st.radio("Modalità:", ["Giorno Singolo", "Intervallo"], horizontal=True)
+    if tipo == "Giorno Singolo": date_list = [st.date_input("Giorno:", datetime.now())]
+    else:
+        dr = st.date_input("Periodo:", value=[], min_value=data_apertura, max_value=data_chiusura)
+        date_list = [dr[0] + timedelta(days=x) for x in range((dr[1]-dr[0]).days + 1)] if len(dr) == 2 else []
+    if date_list:
+        f_in = {p: st.number_input(f"{p}:", min_value=0) for p in lista_postazioni}
+        if st.button("Salva Fabbisogno"):
+            new = [{"Data": str(d), "Mansione": p, "Quantita": v} for d in date_list for p, v in f_in.items()]
+            old = data["fabbisogno"][~data["fabbisogno"]["Data"].astype(str).isin([str(d) for d in date_list])]
+            conn.update(worksheet="Fabbisogno", data=pd.concat([old, pd.DataFrame(new)], ignore_index=True))
+            st.cache_data.clear()
+            st.rerun()
 
-    elif choice == "🔧 Config Stagione":
-        st.header("🔧 Impostazioni Stagione")
-        with st.form("config_form"):
-            new_ap = st.date_input("Inizio Stagione", d_apertura)
-            new_ch = st.date_input("Fine Stagione", d_chiusura)
-            if st.form_submit_button("Aggiorna Date"):
-                conf_df = data["config"].copy()
-                conf_df.loc[conf_df["Ruolo"] == "Apertura", "Password"] = str(new_ap)
-                conf_df.loc[conf_df["Ruolo"] == "Chiusura", "Password"] = str(new_ch)
-                save_to_gsheets("Config", conf_df)
-                st.success("Configurazione salvata!")
+elif menu == "👥 Gestione Anagrafica":
+    st.header("Gestione Anagrafica")
+    if "editing_id" not in st.session_state: st.session_state["editing_id"] = None
+    if st.session_state["editing_id"] is not None:
+        idx = st.session_state["editing_id"]
+        row = data["addetti"].loc[idx]
+        if st.button("⬅️ Torna"): st.session_state["editing_id"] = None; st.rerun()
+        # Visualizzazione mini calendari anche qui per controllo rapido
+        df_p_edit = data["disp"][(data["disp"]["Nome"] == row['Nome']) & (data["disp"]["Cognome"] == row['Cognome'])]
+        cc = st.columns(5); 
+        for i_m, m_v in enumerate([5,6,7,8,9]): 
+            with cc[i_m]: genera_mini_calendario(df_p_edit, row['GiornoRiposoSettimanale'], 2026, m_v)
+        with st.form("edit"):
+            en, ec = st.text_input("Nome", row['Nome']), st.text_input("Cognome", row['Cognome'])
+            em = st.selectbox("Mansione", lista_postazioni, index=lista_postazioni.index(row['Mansione']) if row['Mansione'] in lista_postazioni else 0)
+            er = st.selectbox("Riposo", opzioni_riposo, index=opzioni_riposo.index(row['GiornoRiposoSettimanale']) if row['GiornoRiposoSettimanale'] in opzioni_riposo else 7)
+            if st.form_submit_button("💾 Salva"):
+                data["addetti"].loc[idx] = [en, ec, em, er]
+                conn.update(worksheet="Addetti", data=data["addetti"]); st.cache_data.clear(); st.session_state["editing_id"] = None; st.rerun()
+    else:
+        t1, t2 = st.tabs(["📋 Elenco", "➕ Nuovo"])
+        with t1:
+            for idx, r in data["addetti"].iterrows():
+                c = st.columns([3, 2, 1])
+                c[0].write(f"**{r['Nome']} {r['Cognome']}** ({r['Mansione']})")
+                c[1].caption(f"Riposo: {r['GiornoRiposoSettimanale']}")
+                if c[2].button("Modifica", key=f"ed_{idx}"): st.session_state["editing_id"] = idx; st.rerun()
 
-if __name__ == "__main__":
-    main()
+elif menu == "⚙️ Impostazioni Stagione":
+    st.header("Configurazione Stagione Operativa")
+    st.write("Definisci le date in cui il parco Caribe Bay è aperto al pubblico.")
+    with st.form("set_season"):
+        nuova_ap = st.date_input("Data Apertura Parco:", data_apertura)
+        nuova_ch = st.date_input("Data Chiusura Parco:", data_chiusura)
+        if st.form_submit_button("Salva Date Stagione"):
+            # Aggiorniamo le righe speciali nel foglio Config
+            conf_agg = data["config"].copy()
+            conf_agg.loc[conf_agg["Ruolo"] == "Apertura", "Password"] = str(nuova_ap)
+            conf_agg.loc[conf_agg["Ruolo"] == "Chiusura", "Password"] = str(nuova_ch)
+            conn.update(worksheet="Config", data=conf_agg)
+            st.cache_data.clear()
+            st.success("Date stagione aggiornate!")
+            st.rerun()
+
+elif menu == "🚩 Gestione Postazioni":
+    st.header("Postazioni")
+    np = st.text_input("Nuova")
+    if st.button("Aggiungi"):
+        conn.update(worksheet="Postazioni", data=pd.concat([data["postazioni"], pd.DataFrame([{"Nome Postazione": np}])], ignore_index=True))
+        st.cache_data.clear(); st.rerun()
+    st.table(data["postazioni"])
+
+elif menu == "🔑 Gestione Password":
+    st.header("Password")
+    with st.form("p"):
+        ap = st.text_input("Admin", value=str(data["config"][data["config"]["Ruolo"]=="Admin"]["Password"].values[0]))
+        up = st.text_input("User", value=str(data["config"][data["config"]["Ruolo"]=="User"]["Password"].values[0]))
+        if st.form_submit_button("Aggiorna"):
+            # Manteniamo anche le date stagione durante l'aggiornamento password
+            new_conf = data["config"].copy()
+            new_conf.loc[new_conf["Ruolo"] == "Admin", "Password"] = ap
+            new_conf.loc[new_conf["Ruolo"] == "User", "Password"] = up
+            conn.update(worksheet="Config", data=new_conf)
+            st.success("Salvate!")
