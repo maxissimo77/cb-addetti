@@ -119,7 +119,6 @@ if menu == "📊 Dashboard":
     st.header("Stato Occupazione Postazioni")
     input_d = st.date_input("Inizio visualizzazione (settimana):", default_date)
     
-    # Assicuriamoci che input_d sia un oggetto date
     data_inizio = input_d
     date_range = [data_inizio + timedelta(days=i) for i in range(7)]
     date_aperte = [d for d in date_range if data_apertura <= d <= data_chiusura]
@@ -130,71 +129,65 @@ if menu == "📊 Dashboard":
         tabs = st.tabs([d.strftime("%d/%m") for d in date_aperte])
         for idx, t in enumerate(tabs):
             with t:
-                curr_date = date_aperte[idx]
-                # TRUCCO FONDAMENTALE: Trasformiamo la data corrente in stringa ISO (es. "2026-05-16")
-                curr_date_str = curr_date.strftime("%Y-%m-%d")
-                g_sett = giorni_ita[curr_date.weekday()]
+                curr_date_str = date_aperte[idx].strftime("%Y-%m-%d")
+                g_sett = giorni_ita[date_aperte[idx].weekday()]
                 
-                # Pre-processamento tabelle per uniformare le date a stringhe
+                # --- PRE-PROCESSAMENTO SICURO ---
+                # Fabbisogno
                 df_fabb = data["fabbisogno"].copy()
                 if not df_fabb.empty:
-                    df_fabb["Data"] = pd.to_datetime(df_fabb["Data"]).dt.strftime("%Y-%m-%d")
+                    # errors='coerce' evita il crash se ci sono dati sporchi
+                    df_fabb["Data"] = pd.to_datetime(df_fabb["Data"], errors='coerce')
+                    df_fabb = df_fabb.dropna(subset=["Data"])
+                    df_fabb["Data"] = df_fabb["Data"].dt.strftime("%Y-%m-%d")
                 
+                # Disponibilità
                 df_disp = data["disp"].copy()
                 if not df_disp.empty:
-                    df_disp["Data"] = pd.to_datetime(df_disp["Data"]).dt.strftime("%Y-%m-%d")
+                    df_disp["Data"] = pd.to_datetime(df_disp["Data"], errors='coerce')
+                    df_disp = df_disp.dropna(subset=["Data"])
+                    df_disp["Data"] = df_disp["Data"].dt.strftime("%Y-%m-%d")
 
-                # 1. Filtro Fabbisogno e Disponibilità per il giorno esatto
+                # --- FILTRAGGIO ---
                 fabb_oggi = df_fabb[df_fabb["Data"] == curr_date_str]
                 disp_oggi = df_disp[df_disp["Data"] == curr_date_str]
                 
-                # 2. Partiamo dallo staff totale
                 staff_presente = data["addetti"].copy()
-                
-                # 3. FILTRO A: Togliamo chi ha il RIPOSO FISSO oggi
+                # 1. Escludi riposo fisso
                 staff_presente = staff_presente[staff_presente["GiornoRiposoSettimanale"] != g_sett]
                 
-                # 4. FILTRO B: Togliamo chi ha inserito assenze/permessi in 'disp'
+                # 2. Escludi chi ha segnalato assenza/permesso
                 if not disp_oggi.empty:
-                    # Creiamo una colonna temporanea per il confronto nomi
-                    disp_oggi["Full"] = disp_oggi["Nome"].astype(str).str.strip() + " " + disp_oggi["Cognome"].astype(str).str.strip()
-                    staff_presente["Full"] = staff_presente["Nome"].astype(str).str.strip() + " " + staff_presente["Cognome"].astype(str).str.strip()
+                    disp_oggi["Full"] = disp_oggi["Nome"].astype(str).str.strip().str.upper() + " " + disp_oggi["Cognome"].astype(str).str.strip().str.upper()
+                    staff_presente["Full"] = staff_presente["Nome"].astype(str).str.strip().str.upper() + " " + staff_presente["Cognome"].astype(str).str.strip().str.upper()
                     
-                    # Identifichiamo i nomi di chi NON è disponibile
-                    # (Tutti quelli che hanno una riga in disp per oggi che NON sia "Disponibile")
                     non_disponibili = disp_oggi[~disp_oggi["Stato"].str.contains("Disponibile", case=False, na=False)]["Full"].tolist()
-                    
-                    # Escludiamo questi nomi dallo staff presente
                     staff_presente = staff_presente[~staff_presente["Full"].isin(non_disponibili)]
                 
-                # --- VISUALIZZAZIONE ---
+                # --- UI ---
                 cols = st.columns(3)
                 for i, post in enumerate(lista_postazioni):
-                    presenti_postazione = staff_presente[staff_presente["Mansione"] == post]
+                    presenti_post = staff_presente[staff_presente["Mansione"] == post]
                     f_row = fabb_oggi[fabb_oggi["Mansione"] == post]
                     
                     req = int(f_row["Quantita"].iloc[0]) if not f_row.empty else 0
-                    num_pres = len(presenti_postazione)
+                    num_pres = len(presenti_post)
                     
-                    # Colori dinamici
-                    if req == 0: color_status = "#808080" # Grigio se non serve nessuno
-                    elif num_pres >= req: color_status = "#29b05c" # Verde se ok
-                    else: color_status = "#ff4b4b" # Rosso se mancano persone
+                    color = "#29b05c" if num_pres >= req and req > 0 else "#ff4b4b" if num_pres < req else "#808080"
+                    if req == 0: color = "#808080"
 
                     with cols[i % 3]:
                         st.markdown(f"""
-                            <div style="border: 1px solid #ddd; border-radius: 10px; padding: 0px; margin-bottom: 20px; background-color: white; box-shadow: 2px 2px 5px rgba(0,0,0,0.05);">
-                                <div style="background-color: {color_status}; color: white; padding: 10px; border-radius: 10px 10px 0 0; text-align: center; font-weight: bold; text-transform: uppercase; font-size: 14px;">{post}</div>
+                            <div style="border: 1px solid #ddd; border-radius: 10px; margin-bottom: 20px; background: white;">
+                                <div style="background: {color}; color: white; padding: 10px; border-radius: 10px 10px 0 0; text-align: center; font-weight: bold;">{post}</div>
                                 <div style="padding: 15px; text-align: center;">
-                                    <span style="font-size: 24px; font-weight: bold; color: #333;">{num_pres}</span>
-                                    <span style="font-size: 18px; color: #666;"> / {req}</span>
-                                    <div style="margin-top: 10px; border-top: 1px solid #eee; padding-top: 10px; text-align: left; height: 100px; overflow-y: auto;">
-                                        {"".join([f"<div style='font-size: 12px; color: #444; padding: 2px 0;'>• {r['Nome']} {r['Cognome']}</div>" for _, r in presenti_postazione.iterrows()]) if not presenti_postazione.empty else "<div style='color:#999; font-style:italic; font-size:12px;'>Nessun addetto</div>"}
+                                    <span style="font-size: 22px; font-weight: bold;">{num_pres} / {req}</span>
+                                    <div style="margin-top: 10px; text-align: left; max-height: 120px; overflow-y: auto;">
+                                        {"".join([f"<div style='font-size: 13px; border-bottom: 1px solid #eee;'>• {r['Nome']} {r['Cognome']}</div>" for _, r in presenti_post.iterrows()]) if not presenti_post.empty else "<div style='color:gray; font-size:12px;'>Nessuno</div>"}
                                     </div>
                                 </div>
                             </div>
                         """, unsafe_allow_html=True)
-
 # --- 2. RIEPILOGO RIPOSI ---
 elif menu == "📅 Riepilogo Riposi Settimanali":
     st.header("Riepilogo Giorni di Riposo")
