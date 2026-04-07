@@ -37,6 +37,12 @@ def get_all_data():
             res["addetti"]["Stato Rapporto"] = "Attivo"
         if "Data Cessazione" not in res["addetti"].columns:
             res["addetti"]["Data Cessazione"] = ""
+
+        # --- AGGIUNTA CELLULARE E EMAIL ---
+        if "Cellulare" not in res["addetti"].columns:
+            res["addetti"]["Cellulare"] = ""
+        if "Email" not in res["addetti"].columns:
+            res["addetti"]["Email"] = ""
             
         return res
     except Exception as e:
@@ -179,7 +185,7 @@ if menu == "📊 Dashboard":
                 
                 # --- FILTRO ATTIVI ---
                 staff_base = data["addetti"].copy()
-                staff_base = staff_base[staff_base["Stato Rapporto"] == "Attivo"] # <--- MOSTRA SOLO ATTIVI
+                staff_base = staff_base[staff_base["Stato Rapporto"] == "Attivo"]
                 
                 staff_base["ID_UNICO"] = staff_base["Nome"].apply(norm) + staff_base["Cognome"].apply(norm)
                 staff_base["RIPOSO_NORM"] = staff_base["GiornoRiposoSettimanale"].apply(norm)
@@ -215,7 +221,6 @@ elif menu == "📅 Riepilogo Riposi Settimanali":
     st.header("Riepilogo Giorni di Riposo (Solo Attivi)")
     for m in lista_postazioni:
         with st.expander(f"📍 {m}", expanded=True):
-            # Filtro per mostrare solo chi è attivo
             add_m = data["addetti"][(data["addetti"]["Mansione"] == m) & (data["addetti"]["Stato Rapporto"] == "Attivo")]
             c_rip = st.columns(7)
             for i, g in enumerate(giorni_ita):
@@ -224,19 +229,11 @@ elif menu == "📅 Riepilogo Riposi Settimanali":
                     chi = add_m[add_m["GiornoRiposoSettimanale"] == g]
                     for _, r in chi.iterrows():
                         st.markdown(f"<div style='text-align: center; background-color: rgba(31, 119, 180, 0.1); padding: 10px 5px; border-radius: 5px; margin: 10px 0px; font-size: 14px; font-weight: 500; border: 1px solid rgba(31, 119, 180, 0.3);'>{r['Nome']} {r['Cognome']}</div>", unsafe_allow_html=True)
-            non_def = add_m[add_m["GiornoRiposoSettimanale"] == "Non Definito"]
-            if not non_def.empty:
-                st.markdown("<div style='margin-top: 25px; border-top: 1px solid rgba(128,128,128,0.3); padding-top: 15px;'><b>Riposo Non Definito:</b></div>", unsafe_allow_html=True)
-                html_nd = '<div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; margin-bottom: 20px;">'
-                for _, r in non_def.iterrows():
-                    html_nd += f"<div style='border: 2px solid #ffa500; padding: 8px 15px; border-radius: 8px; font-weight: bold; background-color: rgba(255, 165, 0, 0.1); color: #333;'>{r['Nome']} {r['Cognome']}</div>"
-                st.markdown(html_nd + '</div>', unsafe_allow_html=True)
 
 # --- 3. GESTIONE RIPOSI RAPIDA ---
 elif menu == "📝 Gestione Riposi Rapida":
     st.header("Gestione Rapida Riposi (Solo Attivi)")
     df_mod = data["addetti"].copy()
-    # Filtriamo per lavorare solo con gli attivi
     df_attivi = df_mod[df_mod["Stato Rapporto"] == "Attivo"]
     for m in lista_postazioni:
         add_m = df_attivi[df_attivi["Mansione"] == m]
@@ -261,7 +258,6 @@ elif menu == "📝 Gestione Riposi Rapida":
 elif menu == "📅 Area Disponibilità Staff":
     st.header("Calendario Disponibilità Individuale")
     df_t = data["addetti"].copy()
-    # Mostriamo anche i cessati nel calendario per storico, ma segnaliamolo
     df_t['Full'] = df_t['Nome'] + " " + df_t['Cognome'] + df_t['Stato Rapporto'].apply(lambda x: " (CESSATO)" if x != "Attivo" else "")
     sel_dip = st.selectbox("Seleziona dipendente:", df_t['Full'].tolist())
     row_d = df_t[df_t['Full'] == sel_dip].iloc[0]
@@ -278,26 +274,31 @@ elif menu == "📅 Area Disponibilità Staff":
             old = data["disp"][~((data["disp"]["Nome"] == row_d['Nome']) & (data["disp"]["Cognome"] == row_d['Cognome']) & (data["disp"]["Data"].astype(str).isin(d_list)))]
             conn.update(worksheet="Disponibilita", data=pd.concat([old, nuovi], ignore_index=True)); st.cache_data.clear(); st.rerun()
 
-# --- 5. GESTIONE ANAGRAFICA ---
+# --- 5. GESTIONE ANAGRAFICA (AGGIORNATA) ---
 elif menu == "👥 Gestione Anagrafica":
     st.header("Anagrafica Personale")
     if "editing_id" not in st.session_state: st.session_state["editing_id"] = None
+    
     if st.session_state["editing_id"] is not None:
         idx = st.session_state["editing_id"]
         row = data["addetti"].loc[idx]
         with st.form("edit"):
             st.subheader(f"Modifica: {row['Nome']} {row['Cognome']}")
+            
             c1, c2, c3 = st.columns([2, 2, 1])
             en, ec = c1.text_input("Nome", row['Nome']), c2.text_input("Cognome", row['Cognome'])
-            # NUOVO CAMPO: Stato Rapporto
             attuale_stato = row['Stato Rapporto'] if 'Stato Rapporto' in row else "Attivo"
             estato = c3.selectbox("Stato", ["Attivo", "Dimesso", "Licenziato"], index=["Attivo", "Dimesso", "Licenziato"].index(attuale_stato) if attuale_stato in ["Attivo", "Dimesso", "Licenziato"] else 0)
+            
+            # --- NUOVI CAMPI CONTATTO ---
+            c_tel, c_mail = st.columns(2)
+            etel = c_tel.text_input("Cellulare", value=str(row['Cellulare']) if pd.notna(row['Cellulare']) else "")
+            email = c_mail.text_input("Email", value=str(row['Email']) if pd.notna(row['Email']) else "")
             
             c1, c2 = st.columns(2)
             em = c1.selectbox("Mansione", lista_postazioni, index=lista_postazioni.index(row['Mansione']) if row['Mansione'] in lista_postazioni else 0)
             er = c2.selectbox("Riposo", opzioni_riposo, index=opzioni_riposo.index(row['GiornoRiposoSettimanale']) if row['GiornoRiposoSettimanale'] in opzioni_riposo else 7)
             
-            # NUOVO CAMPO: Data Cessazione
             attuale_data_cess = row['Data Cessazione'] if 'Data Cessazione' in row and pd.notna(row['Data Cessazione']) else ""
             edata_cess = st.text_input("Data di uscita (se non attivo)", value=attuale_data_cess)
             
@@ -309,7 +310,8 @@ elif menu == "👥 Gestione Anagrafica":
                 new_data_row = {
                     "Nome": en, "Cognome": ec, "Mansione": em, 
                     "GiornoRiposoSettimanale": er, "Contestazioni": e_cont,
-                    "Stato Rapporto": estato, "Data Cessazione": edata_cess
+                    "Stato Rapporto": estato, "Data Cessazione": edata_cess,
+                    "Cellulare": etel, "Email": email
                 }
                 for col, val in new_data_row.items(): data["addetti"].at[idx, col] = val
                 conn.update(worksheet="Addetti", data=data["addetti"]); st.cache_data.clear(); st.session_state["editing_id"] = None; st.rerun()
@@ -328,13 +330,20 @@ elif menu == "👥 Gestione Anagrafica":
                     c1, c2, c3 = st.columns([3, 3, 1])
                     has_cont = 'Contestazioni' in r and pd.notna(r['Contestazioni']) and str(r['Contestazioni']).strip() != ""
                     
-                    # Evidenziazione visiva per i cessati
                     nome_label = f"{r['Nome']} {r['Cognome']}"
                     if r['Stato Rapporto'] != "Attivo":
                         nome_label = f"🚫 {nome_label} ({r['Stato Rapporto'].upper()})"
                     
                     c1.markdown(f"**{nome_label}**{' 🚩' if has_cont else ''}")
-                    c2.caption(f"{r['Mansione']} | Riposo: {r['GiornoRiposoSettimanale']}")
+                    
+                    # Visualizzazione Cellulare e Email
+                    contatti = []
+                    if pd.notna(r['Cellulare']) and str(r['Cellulare']).strip() != "": contatti.append(f"📞 {r['Cellulare']}")
+                    if pd.notna(r['Email']) and str(r['Email']).strip() != "": contatti.append(f"📧 {r['Email']}")
+                    contatti_str = " | ".join(contatti) if contatti else "Nessun recapito"
+                    
+                    c2.caption(f"{r['Mansione']} | Riposo: {r['GiornoRiposoSettimanale']}\n\n{contatti_str}")
+                    
                     if c3.button("✏️", key=f"ed_{idx}"): st.session_state["editing_id"] = idx; st.rerun()
                     st.markdown(f"<div style='font-size: 15px; font-weight: bold; color: #444; margin-top: -10px; margin-bottom: 5px;'>{sum_str}</div>", unsafe_allow_html=True)
                     if has_cont:
@@ -342,15 +351,21 @@ elif menu == "👥 Gestione Anagrafica":
                     st.divider()
         with t2:
             with st.form("n"):
-                nn, nc = st.text_input("Nome"), st.text_input("Cognome")
+                c1, c2 = st.columns(2)
+                nn, nc = c1.text_input("Nome"), c2.text_input("Cognome")
+                ntel, nmail = c1.text_input("Cellulare"), c2.text_input("Email")
                 nm, nr = st.selectbox("Mansione", lista_postazioni), st.selectbox("Riposo", opzioni_riposo)
                 ncnt = st.text_area("Contestazioni iniziali")
                 if st.form_submit_button("Aggiungi"):
-                    new_member = pd.DataFrame([{"Nome":nn, "Cognome":nc, "Mansione":nm, "GiornoRiposoSettimanale":nr, "Contestazioni":ncnt, "Stato Rapporto": "Attivo", "Data Cessazione": ""}])
+                    new_member = pd.DataFrame([{
+                        "Nome":nn, "Cognome":nc, "Mansione":nm, "GiornoRiposoSettimanale":nr, 
+                        "Contestazioni":ncnt, "Stato Rapporto": "Attivo", "Data Cessazione": "",
+                        "Cellulare": ntel, "Email": nmail
+                    }])
                     conn.update(worksheet="Addetti", data=pd.concat([data["addetti"], new_member], ignore_index=True))
                     st.cache_data.clear(); st.rerun()
 
-# --- ALTRE SEZIONI (INVARIATE MA AGGIUNTE PER COMPLETEZZA) ---
+# --- ALTRE SEZIONI ---
 elif menu == "⚙️ Pianifica Fabbisogno":
     st.header("Fabbisogno")
     tipo = st.radio("Modalità:", ["Giorno Singolo", "Intervallo"], horizontal=True)
