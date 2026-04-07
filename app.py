@@ -318,9 +318,22 @@ elif menu == "📅 Riepilogo Riposi Settimanali":
                         chi = add_m[add_m["GiornoRiposoSettimanale"] == g]
                         for _, r in chi.iterrows():
                             st.markdown(f"<div style='text-align: center; background-color: rgba(31, 119, 180, 0.1); padding: 10px 5px; border-radius: 5px; margin: 10px 0px; font-size: 14px; font-weight: 500; border: 1px solid rgba(31, 119, 180, 0.3);'>{r['Nome']} {r['Cognome']}</div>", unsafe_allow_html=True)
+                
+                # --- SEZIONE NON DEFINITI CON RIQUADRI ---
                 non_def = add_m[add_m["GiornoRiposoSettimanale"] == "Non Definito"]
                 if not non_def.empty:
-                    st.markdown("<hr><b>Non Definito:</b> " + ", ".join([f"{r['Nome']} {r['Cognome']}" for _, r in non_def.iterrows()]), unsafe_allow_html=True)
+                    st.markdown("<div style='margin-top: 20px; border-top: 1px solid #eee; padding-top: 10px;'><b>Riposo Non Definito:</b></div>", unsafe_allow_html=True)
+                    # Container Flex per i riquadri
+                    html_nd = '<div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px;">'
+                    for _, r in non_def.iterrows():
+                        html_nd += f"""
+                            <div style='border: 2px solid #ffa500; padding: 8px 15px; border-radius: 8px; 
+                            font-weight: bold; background-color: rgba(255, 165, 0, 0.1); color: #333;'>
+                                {r['Nome']} {r['Cognome']}
+                            </div>
+                        """
+                    html_nd += '</div>'
+                    st.markdown(html_nd, unsafe_allow_html=True)
 
 # --- 3. GESTIONE RIPOSI RAPIDA ---
 elif menu == "📝 Gestione Riposi Rapida":
