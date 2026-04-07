@@ -3,6 +3,7 @@ from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 from datetime import datetime, timedelta
 import calendar
+import urllib.parse
 
 # --- CONFIGURAZIONE PAGINA ---
 st.set_page_config(
@@ -64,6 +65,19 @@ def get_all_data():
         st.stop()
 
 data = get_all_data()
+
+# --- UTILITY WHATSAPP ---
+def format_wa_link(row):
+    tel = str(row['Cellulare']).strip().replace(" ", "").replace("+", "")
+    if not tel or tel == "":
+        return None
+    # Se il numero non ha il prefisso internazionale, aggiungiamo 39 (Italia)
+    if len(tel) <= 10:
+        tel = "39" + tel
+    
+    msg = f"Ciao {row['Nome']}, ti confermiamo che il tuo giorno di riposo settimanale è il {row['GiornoRiposoSettimanale']}. A presto!"
+    msg_encoded = urllib.parse.quote(msg)
+    return f"https://wa.me/{tel}?text={msg_encoded}"
 
 # --- ESTRAZIONE CONFIGURAZIONE ---
 conf_df = data["config"]
@@ -169,8 +183,14 @@ if menu == "📊 Dashboard":
         def norm(s):
             if pd.isna(s): return ""
             return str(s).strip().upper()
+            
         def genera_card(titolo, color, num, req, staff_list):
-            nomi_html = "".join([f"<div style='font-size: 13px; border-bottom: 1px solid #f0f0f0; padding: 4px 0; color: #444;'>• {r['Nome']} {r['Cognome']}</div>" for _, r in staff_list.iterrows()])
+            nomi_html = ""
+            for _, r in staff_list.iterrows():
+                wa_link = format_wa_link(r)
+                wa_icon = f'<a href="{wa_link}" target="_blank" style="text-decoration:none; margin-left:5px;">📲</a>' if wa_link else ""
+                nomi_html += f"<div style='font-size: 13px; border-bottom: 1px solid #f0f0f0; padding: 4px 0; color: #444;'>• {r['Nome']} {r['Cognome']} {wa_icon}</div>"
+            
             if not nomi_html: nomi_html = "<div style='color:gray; font-size:12px; font-style:italic;'>Nessuno disponibile</div>"
             return f"""
                 <div style="border: 1px solid #ddd; border-radius: 10px; margin-bottom: 15px; background: white; box-shadow: 2px 2px 5px rgba(0,0,0,0.05);">
@@ -229,7 +249,7 @@ if menu == "📊 Dashboard":
                     c3 = "#29b05c" if n3 >= r3 and r3 > 0 else "#ff4b4b" if n3 < r3 else "#808080"
                     st.markdown(genera_card(m3, c3, n3, r3, s_p3), unsafe_allow_html=True)
 
-# --- 2. RIEPILOGO RIPOSI (RIPRISTINATO) ---
+# --- 2. RIEPILOGO RIPOSI ---
 elif menu == "📅 Riepilogo Riposi Settimanali":
     st.header("Riepilogo Giorni di Riposo (Solo Attivi)")
     for m in lista_postazioni:
@@ -242,7 +262,13 @@ elif menu == "📅 Riepilogo Riposi Settimanali":
                         st.markdown(f"<div style='text-align:center; background:rgba(128,128,128,0.2); padding:5px; border-radius:5px; margin-bottom:12px;'><b>{g}</b></div>", unsafe_allow_html=True)
                         chi = add_m[add_m["GiornoRiposoSettimanale"] == g]
                         for _, r in chi.iterrows():
-                            st.markdown(f"<div style='text-align: center; background-color: rgba(31, 119, 180, 0.1); padding: 10px 5px; border-radius: 5px; margin: 10px 0px; font-size: 14px; font-weight: 500; border: 1px solid rgba(31, 119, 180, 0.3);'>{r['Nome']} {r['Cognome']}</div>", unsafe_allow_html=True)
+                            wa_link = format_wa_link(r)
+                            wa_btn = f'<br><a href="{wa_link}" target="_blank" style="text-decoration:none; font-size:12px;">📲 Invia</a>' if wa_link else ""
+                            st.markdown(f"""
+                                <div style='text-align: center; background-color: rgba(31, 119, 180, 0.1); padding: 10px 5px; border-radius: 5px; margin: 10px 0px; font-size: 14px; font-weight: 500; border: 1px solid rgba(31, 119, 180, 0.3);'>
+                                    {r['Nome']} {r['Cognome']}{wa_btn}
+                                </div>
+                            """, unsafe_allow_html=True)
                 non_def = add_m[add_m["GiornoRiposoSettimanale"] == "Non Definito"]
                 if not non_def.empty:
                     st.markdown("<div style='margin-top: 25px; border-top: 1px solid rgba(128,128,128,0.3); padding-top: 15px;'><b>Riposo Non Definito:</b></div>", unsafe_allow_html=True)
