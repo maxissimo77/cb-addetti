@@ -27,6 +27,11 @@ def get_all_data():
             "postazioni": conn.read(worksheet="Postazioni"),
             "config": conn.read(worksheet="Config")
         }
+        
+        # --- SOLUZIONE AL TYPEERROR ---
+        # Forziamo il DataFrame degli addetti a supportare stringhe in tutte le colonne
+        res["addetti"] = res["addetti"].astype(object)
+
         # Pulizia Contestazioni
         if "Contestazioni" in res["addetti"].columns:
             res["addetti"]["Contestazioni"] = res["addetti"]["Contestazioni"].astype(str).replace(['nan', 'None', '<NA>'], '')
@@ -69,13 +74,12 @@ data = get_all_data()
 # --- UTILITY WHATSAPP ---
 def format_wa_link(row):
     tel = str(row['Cellulare']).strip().replace(" ", "").replace("+", "")
-    if not tel or tel == "":
+    if not tel or tel == "" or tel == "nan":
         return None
-    # Se il numero non ha il prefisso internazionale, aggiungiamo 39 (Italia)
     if len(tel) <= 10:
         tel = "39" + tel
     
-    msg = f"Ciao {row['Nome']}, "
+    msg = f"Ciao {row['Nome']}, ti confermiamo che il tuo giorno di riposo settimanale è il {row['GiornoRiposoSettimanale']}. A presto!"
     msg_encoded = urllib.parse.quote(msg)
     return f"https://wa.me/{tel}?text={msg_encoded}"
 
