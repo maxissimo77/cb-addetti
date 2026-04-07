@@ -28,23 +28,18 @@ def get_all_data():
             "config": conn.read(worksheet="Config")
         }
         
-        # --- SOLUZIONE AL TYPEERROR ---
-        # Forziamo il DataFrame degli addetti a supportare stringhe in tutte le colonne
         res["addetti"] = res["addetti"].astype(object)
 
-        # Pulizia Contestazioni
         if "Contestazioni" in res["addetti"].columns:
             res["addetti"]["Contestazioni"] = res["addetti"]["Contestazioni"].astype(str).replace(['nan', 'None', '<NA>'], '')
         else:
             res["addetti"]["Contestazioni"] = ""
             
-        # Gestione Nuove Colonne Dimissioni/Licenziamenti
         if "Stato Rapporto" not in res["addetti"].columns:
             res["addetti"]["Stato Rapporto"] = "Attivo"
         if "Data Cessazione" not in res["addetti"].columns:
             res["addetti"]["Data Cessazione"] = ""
 
-        # --- PULIZIA CELLULARE (RIMOZIONE .0) E EMAIL ---
         if "Cellulare" not in res["addetti"].columns:
             res["addetti"]["Cellulare"] = ""
         else:
@@ -191,9 +186,8 @@ if menu == "📊 Dashboard":
         def genera_card(titolo, color, num, req, staff_list):
             nomi_html = ""
             for _, r in staff_list.iterrows():
-                wa_link = format_wa_link(r)
-                wa_icon = f'<a href="{wa_link}" target="_blank" style="text-decoration:none; margin-left:5px;">📲</a>' if wa_link else ""
-                nomi_html += f"<div style='font-size: 13px; border-bottom: 1px solid #f0f0f0; padding: 4px 0; color: #444;'>• {r['Nome']} {r['Cognome']} {wa_icon}</div>"
+                # Rimosso wa_icon qui per Dashboard
+                nomi_html += f"<div style='font-size: 13px; border-bottom: 1px solid #f0f0f0; padding: 4px 0; color: #444;'>• {r['Nome']} {r['Cognome']}</div>"
             
             if not nomi_html: nomi_html = "<div style='color:gray; font-size:12px; font-style:italic;'>Nessuno disponibile</div>"
             return f"""
@@ -266,6 +260,7 @@ elif menu == "📅 Riepilogo Riposi Settimanali":
                         st.markdown(f"<div style='text-align:center; background:rgba(128,128,128,0.2); padding:5px; border-radius:5px; margin-bottom:12px;'><b>{g}</b></div>", unsafe_allow_html=True)
                         chi = add_m[add_m["GiornoRiposoSettimanale"] == g]
                         for _, r in chi.iterrows():
+                            # Mantengo wa_link qui per il riepilogo riposi
                             wa_link = format_wa_link(r)
                             wa_btn = f'<br><a href="{wa_link}" target="_blank" style="text-decoration:none; font-size:12px;">📲 Invia</a>' if wa_link else ""
                             st.markdown(f"""
@@ -366,9 +361,15 @@ elif menu == "👥 Gestione Anagrafica":
                 with st.container():
                     c1, c2, c3 = st.columns([3, 3, 1])
                     has_cont = 'Contestazioni' in r and pd.notna(r['Contestazioni']) and str(r['Contestazioni']).strip() != ""
-                    nome_label = f"{r['Nome']} {r['Cognome']}"
-                    if r['Stato Rapporto'] != "Attivo": nome_label = f"🚫 {nome_label} ({r['Stato Rapporto'].upper()})"
-                    c1.markdown(f"**{nome_label}**{' 🚩' if has_cont else ''}")
+                    
+                    # ICONA WHATSAPP SOLO QUI
+                    wa_link = format_wa_link(r)
+                    wa_icon = f' <a href="{wa_link}" target="_blank" style="text-decoration:none;">📲</a>' if wa_link else ""
+                    
+                    nome_label = f"{r['Nome']} {r['Cognome']}{wa_icon}"
+                    if r['Stato Rapporto'] != "Attivo": nome_label = f"🚫 {r['Nome']} {r['Cognome']} ({r['Stato Rapporto'].upper()})"
+                    
+                    c1.markdown(f"**{nome_label}**{' 🚩' if has_cont else ''}", unsafe_allow_html=True)
                     contatti = []
                     if pd.notna(r['Cellulare']) and str(r['Cellulare']).strip() != "": contatti.append(f"📞 {r['Cellulare']}")
                     if pd.notna(r['Email']) and str(r['Email']).strip() != "": contatti.append(f"📧 {r['Email']}")
