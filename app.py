@@ -275,12 +275,10 @@ elif menu == "📅 Riepilogo Riposi Settimanali":
                         st.markdown(f"<div style='text-align:center; background:rgba(128,128,128,0.2); padding:5px; border-radius:5px; margin-bottom:12px;'><b>{g}</b></div>", unsafe_allow_html=True)
                         chi = add_m[add_m["GiornoRiposoSettimanale"] == g]
                         for _, r in chi.iterrows():
-                            # Mantengo wa_link qui per il riepilogo riposi
-                            wa_link = format_wa_link(r)
-                            wa_btn = f'<br><a href="{wa_link}" target="_blank" style="text-decoration:none; font-size:12px;">📲 Invia</a>' if wa_link else ""
+                            # Rimosso wa_link e wa_btn da questa sezione
                             st.markdown(f"""
                                 <div style='text-align: center; background-color: rgba(31, 119, 180, 0.1); padding: 10px 5px; border-radius: 5px; margin: 10px 0px; font-size: 14px; font-weight: 500; border: 1px solid rgba(31, 119, 180, 0.3);'>
-                                    {r['Nome']} {r['Cognome']}{wa_btn}
+                                    {r['Nome']} {r['Cognome']}
                                 </div>
                             """, unsafe_allow_html=True)
                 non_def = add_m[add_m["GiornoRiposoSettimanale"] == "Non Definito"]
