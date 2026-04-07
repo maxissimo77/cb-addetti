@@ -29,6 +29,7 @@ def get_all_data():
         }
         
         # --- SOLUZIONE AL TYPEERROR ---
+        # Forziamo il DataFrame degli addetti a supportare stringhe in tutte le colonne
         res["addetti"] = res["addetti"].astype(object)
 
         # Pulizia Contestazioni
@@ -96,22 +97,14 @@ except Exception:
     data_apertura = datetime(2026, 5, 16).date()
     data_chiusura = datetime(2026, 9, 13).date()
 
-# --- LOGIN (MODIFICATO CON LOGO) ---
+# --- LOGIN ---
 if "role" not in st.session_state:
-    col_l1, col_l2, col_l3 = st.columns([1, 1, 1])
-    with col_l2:
-        st.image("https://www.caribebay.it/sites/default/files/caribebay-logo.png", use_container_width=True)
-        st.markdown("<br>", unsafe_allow_html=True)
-        pwd_input = st.text_input("Area Riservata Staff - Password", type="password")
-        if st.button("Accedi", use_container_width=True):
-            if pwd_input == admin_pwd: 
-                st.session_state["role"] = "Admin"
-                st.rerun()
-            elif pwd_input == user_pwd: 
-                st.session_state["role"] = "User"
-                st.rerun()
-            else: 
-                st.error("❌ Password errata.")
+    st.title("🌊 Caribe Bay - Staff Login")
+    pwd_input = st.text_input("Inserisci Password", type="password")
+    if st.button("Accedi"):
+        if pwd_input == admin_pwd: st.session_state["role"] = "Admin"; st.rerun()
+        elif pwd_input == user_pwd: st.session_state["role"] = "User"; st.rerun()
+        else: st.error("❌ Password errata.")
     st.stop()
 
 # --- VARIABILI GLOBALI ---
