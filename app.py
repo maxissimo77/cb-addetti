@@ -94,12 +94,26 @@ except Exception:
 
 # --- LOGIN ---
 if "role" not in st.session_state:
-    st.title("🌊 Caribe Bay - Staff Login")
-    pwd_input = st.text_input("Inserisci Password", type="password")
-    if st.button("Accedi"):
-        if pwd_input == admin_pwd: st.session_state["role"] = "Admin"; st.rerun()
-        elif pwd_input == user_pwd: st.session_state["role"] = "User"; st.rerun()
-        else: st.error("❌ Password errata.")
+    # Centratura del logo e rimozione scritte superflue
+    col_l1, col_l2, col_l3 = st.columns([1, 1, 1])
+    with col_l2:
+        st.image("https://www.caribebay.it/sites/default/files/caribebay-logo.png", use_container_width=True)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # Box di login centrato
+    col_p1, col_p2, col_p3 = st.columns([1, 1, 1])
+    with col_p2:
+        pwd_input = st.text_input("Inserisci Password", type="password")
+        if st.button("Accedi", use_container_width=True):
+            if pwd_input == admin_pwd: 
+                st.session_state["role"] = "Admin"
+                st.rerun()
+            elif pwd_input == user_pwd: 
+                st.session_state["role"] = "User"
+                st.rerun()
+            else: 
+                st.error("❌ Password errata.")
     st.stop()
 
 # --- VARIABILI GLOBALI ---
