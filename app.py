@@ -216,20 +216,41 @@ if menu == "📊 Dashboard":
                     c3 = "#29b05c" if n3 >= r3 and r3 > 0 else "#ff4b4b" if n3 < r3 else "#808080"
                     st.markdown(genera_card(m3, c3, n3, r3, s_p3), unsafe_allow_html=True)
 
-# --- 2. RIEPILOGO RIPOSI ---
+# --- 2. RIEPILOGO RIPOSI (RIPRISTINATO STILE ORIGINALE) ---
 elif menu == "📅 Riepilogo Riposi Settimanali":
     st.header("Riepilogo Giorni di Riposo (Solo Attivi)")
     for m in lista_postazioni:
-        with st.expander(f"📍 {m}", expanded=True):
-            add_m = data["addetti"][(data["addetti"]["Mansione"] == m) & (data["addetti"]["Stato Rapporto"] == "Attivo")]
-            c_rip = st.columns(7)
-            for i, g in enumerate(giorni_ita):
-                with c_rip[i]:
-                    st.markdown(f"<div style='text-align:center; background:rgba(128,128,128,0.2); padding:5px; border-radius:5px; margin-bottom:12px;'><b>{g}</b></div>", unsafe_allow_html=True)
-                    chi = add_m[add_m["GiornoRiposoSettimanale"] == g]
-                    for _, r in chi.iterrows():
-                        st.markdown(f"<div style='text-align: center; background-color: rgba(31, 119, 180, 0.1); padding: 10px 5px; border-radius: 5px; margin: 10px 0px; font-size: 14px; font-weight: 500; border: 1px solid rgba(31, 119, 180, 0.3);'>{r['Nome']} {r['Cognome']}</div>", unsafe_allow_html=True)
-
+        # Mostriamo solo chi ha "Stato Rapporto" == "Attivo"
+        add_m = data["addetti"][(data["addetti"]["Mansione"] == m) & (data["addetti"]["Stato Rapporto"] == "Attivo")]
+        
+        if not add_m.empty:
+            with st.expander(f"📍 {m}", expanded=True):
+                c_rip = st.columns(7)
+                for i, g in enumerate(giorni_ita):
+                    with c_rip[i]:
+                        # Intestazione Giorno
+                        st.markdown(f"<div style='text-align:center; background:rgba(128,128,128,0.2); padding:5px; border-radius:5px; margin-bottom:12px;'><b>{g}</b></div>", unsafe_allow_html=True)
+                        
+                        # Filtro dipendenti per questo giorno di riposo
+                        chi = add_m[add_m["GiornoRiposoSettimanale"] == g]
+                        for _, r in chi.iterrows():
+                            # Ripristinato il box blu distintivo per ogni nome
+                            st.markdown(f"""
+                                <div style='text-align: center; background-color: rgba(31, 119, 180, 0.1); 
+                                padding: 10px 5px; border-radius: 5px; margin: 10px 0px; 
+                                font-size: 14px; font-weight: 500; border: 1px solid rgba(31, 119, 180, 0.3);'>
+                                    {r['Nome']} {r['Cognome']}
+                                </div>
+                            """, unsafe_allow_html=True)
+                
+                # Sezione per chi non ha un riposo definito
+                non_def = add_m[add_m["GiornoRiposoSettimanale"] == "Non Definito"]
+                if not non_def.empty:
+                    st.markdown("<div style='margin-top: 25px; border-top: 1px solid rgba(128,128,128,0.3); padding-top: 15px;'><b>Riposo Non Definito:</b></div>", unsafe_allow_html=True)
+                    html_nd = '<div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; margin-bottom: 20px;">'
+                    for _, r in non_def.iterrows():
+                        html_nd += f"<div style='border: 2px solid #ffa500; padding: 8px 15px; border-radius: 8px; font-weight: bold; background-color: rgba(255, 165, 0, 0.1); color: #333;'>{r['Nome']} {r['Cognome']}</div>"
+                    st.markdown(html_nd + '</div>', unsafe_allow_html=True)
 # --- 3. GESTIONE RIPOSI RAPIDA ---
 elif menu == "📝 Gestione Riposi Rapida":
     st.header("Gestione Rapida Riposi (Solo Attivi)")
