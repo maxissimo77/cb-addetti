@@ -15,7 +15,7 @@ pd.options.mode.string_storage = "python"
 # --- CONNESSIONE ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# --- CARICAMENTO DATI (CORRETTO) ---
+# --- CARICAMENTO DATI ---
 @st.cache_data(ttl=60)
 def get_all_data():
     try:
@@ -26,10 +26,18 @@ def get_all_data():
             "postazioni": conn.read(worksheet="Postazioni"),
             "config": conn.read(worksheet="Config")
         }
+        # Pulizia Contestazioni
         if "Contestazioni" in res["addetti"].columns:
             res["addetti"]["Contestazioni"] = res["addetti"]["Contestazioni"].astype(str).replace(['nan', 'None', '<NA>'], '')
         else:
             res["addetti"]["Contestazioni"] = ""
+            
+        # Gestione Nuove Colonne Dimissioni/Licenziamenti
+        if "Stato Rapporto" not in res["addetti"].columns:
+            res["addetti"]["Stato Rapporto"] = "Attivo"
+        if "Data Cessazione" not in res["addetti"].columns:
+            res["addetti"]["Data Cessazione"] = ""
+            
         return res
     except Exception as e:
         st.error(f"⚠️ Errore di connessione API: {e}")
@@ -73,16 +81,12 @@ lista_postazioni = data["postazioni"]["Nome Postazione"].dropna().unique().tolis
 def genera_mini_calendario(df_persona, riposo_fisso, anno, mese):
     nomi_mesi_ita = {5: "MAGGIO", 6: "GIUGNO", 7: "LUGLIO", 8: "AGOSTO", 9: "SETTEMBRE"}
     st.markdown(f"<div style='text-align: center; background-color: #1f77b4; color: white; padding: 5px; border-radius: 5px; margin-bottom: 5px;'><b>{nomi_mesi_ita.get(mese, 'Mese')}</b></div>", unsafe_allow_html=True)
-    
-    # Normalizzazione per il confronto
     mappa_lower = {k.lower(): v for k, v in mappa_giorni.items()}
     r_pulito = str(riposo_fisso).strip().lower()
     idx_riposo_fisso = mappa_lower.get(r_pulito, -1)
-    
     cal = calendar.monthcalendar(anno, mese)
     html = '<table style="width:100%; border-collapse: collapse; text-align: center; font-size: 11px; table-layout: fixed; border: 1px solid #ddd;">'
     html += '<tr style="background:rgba(128,128,128,0.1);"><th>L</th><th>M</th><th>M</th><th>G</th><th>V</th><th>S</th><th>D</th></tr>'
-    
     for week in cal:
         html += '<tr style="height: 30px;">'
         for i, day in enumerate(week):
@@ -92,31 +96,20 @@ def genera_mini_calendario(df_persona, riposo_fisso, anno, mese):
                 curr_d = datetime(anno, mese, day).date()
                 d_str = curr_d.strftime("%Y-%m-%d")
                 is_open = data_apertura <= curr_d <= data_chiusura
-                
                 bg, tx, label = "transparent", "inherit", str(day)
-
                 if not is_open:
                     bg, tx, label = "#f0f0f0", "#bfbfbf", f"<span style='text-decoration: line-through;'>{day}</span>"
                 else:
-                    # 1. CONTROLLO SE C'È UNA NOTA NEL DB
                     stato_row = df_persona[df_persona["Data"].astype(str).str.contains(d_str, na=False)]
-                    
-                    # 2. LOGICA DI PRIORITÀ COLORI
                     if i == idx_riposo_fisso:
-                        # Se è il giorno di riposo, mettiamo ARANCIONE di default
                         bg, tx = "#ffa500", "white"
-                        
-                        # Se però nel DB c'è un'assenza GRAVE (non un semplice "disponibile"), cambiamo colore
                         if not stato_row.empty:
                             s_val = str(stato_row["Stato"].iloc[0]).upper()
                             if "NON" in s_val: bg, tx = "#ff4b4b", "white"
                             elif "PERMESSO" in s_val: bg, tx = "#00008B", "white"
                             elif "ASSENTE" in s_val: bg, tx = "#000000", "white"
                             elif "MALATTIA" in s_val: bg, tx = "#696969", "white"
-                            # Se s_val è "DISPONIBILE", lo ignoriamo e lasciamo l'arancione del riposo
-                    
                     else:
-                        # Se NON è il giorno di riposo, usiamo i colori del DB
                         if not stato_row.empty:
                             s_val = str(stato_row["Stato"].iloc[0]).upper()
                             if "NON" in s_val: bg, tx = "#ff4b4b", "white"
@@ -124,7 +117,6 @@ def genera_mini_calendario(df_persona, riposo_fisso, anno, mese):
                             elif "ASSENTE" in s_val: bg, tx = "#000000", "white"
                             elif "MALATTIA" in s_val: bg, tx = "#696969", "white"
                             elif "DISPONIBILE" in s_val: bg, tx = "#29b05c", "white"
-
                 html += f'<td style="background:{bg}; color:{tx}; border:1px solid rgba(128,128,128,0.2); font-weight:bold;">{label}</td>'
         html += '</tr>'
     st.markdown(html + '</table>', unsafe_allow_html=True)
@@ -144,7 +136,6 @@ if st.sidebar.button("Logout"):
 if menu == "📊 Dashboard":
     st.header("Stato Occupazione Postazioni")
     input_d = st.date_input("Inizio visualizzazione (settimana):", default_date)
-    
     data_inizio = input_d
     date_range = [data_inizio + timedelta(days=i) for i in range(7)]
     date_aperte = [d for d in date_range if data_apertura <= d <= data_chiusura]
@@ -152,20 +143,15 @@ if menu == "📊 Dashboard":
     if not date_aperte:
         st.warning(f"⚠️ Parco CHIUSO nel periodo selezionato.")
     else:
-        # Funzioni helper
         def to_date_only(val):
             try: return pd.to_datetime(val).date()
             except: return None
-
         def norm(s):
             if pd.isna(s): return ""
             return str(s).strip().upper()
-
-        # Funzione interna per generare la card HTML
         def genera_card(titolo, color, num, req, staff_list):
             nomi_html = "".join([f"<div style='font-size: 13px; border-bottom: 1px solid #f0f0f0; padding: 4px 0; color: #444;'>• {r['Nome']} {r['Cognome']}</div>" for _, r in staff_list.iterrows()])
             if not nomi_html: nomi_html = "<div style='color:gray; font-size:12px; font-style:italic;'>Nessuno disponibile</div>"
-            
             return f"""
                 <div style="border: 1px solid #ddd; border-radius: 10px; margin-bottom: 15px; background: white; box-shadow: 2px 2px 5px rgba(0,0,0,0.05);">
                     <div style="background: {color}; color: white; padding: 8px; border-radius: 10px 10px 0 0; text-align: center; font-weight: bold; font-size: 13px;">{titolo.upper()}</div>
@@ -181,78 +167,56 @@ if menu == "📊 Dashboard":
             with t:
                 d_tab = date_aperte[idx]
                 giorno_sett_oggi = norm(giorni_ita[d_tab.weekday()])
-                
-                # 1. FILTRI DATI
                 df_f = data["fabbisogno"].copy()
                 df_f['d_pure'] = df_f['Data'].apply(to_date_only)
                 fabb_oggi = df_f[df_f['d_pure'] == d_tab]
-                
                 df_dis = data["disp"].copy()
                 df_dis['d_pure'] = df_dis['Data'].apply(to_date_only)
                 disp_oggi = df_dis[df_dis['d_pure'] == d_tab]
                 disp_oggi["Stato_Norm"] = disp_oggi["Stato"].apply(norm)
-                
                 nomi_assenti = disp_oggi[disp_oggi["Stato_Norm"] != "DISPONIBILE"]
                 lista_nera_nomi = (nomi_assenti["Nome"].apply(norm) + nomi_assenti["Cognome"].apply(norm)).tolist()
-
-                # 2. COSTRUZIONE LISTA PRESENTI
+                
+                # --- FILTRO ATTIVI ---
                 staff_base = data["addetti"].copy()
+                staff_base = staff_base[staff_base["Stato Rapporto"] == "Attivo"] # <--- MOSTRA SOLO ATTIVI
+                
                 staff_base["ID_UNICO"] = staff_base["Nome"].apply(norm) + staff_base["Cognome"].apply(norm)
                 staff_base["RIPOSO_NORM"] = staff_base["GiornoRiposoSettimanale"].apply(norm)
+                presenti_effettivi = staff_base[(staff_base["RIPOSO_NORM"] != giorno_sett_oggi) & (~staff_base["ID_UNICO"].isin(lista_nera_nomi))].copy()
 
-                presenti_effettivi = staff_base[
-                    (staff_base["RIPOSO_NORM"] != giorno_sett_oggi) & 
-                    (~staff_base["ID_UNICO"].isin(lista_nera_nomi))
-                ].copy()
-
-                # 3. LAYOUT A 3 COLONNE "MASONRY"
                 col1, col2, col3 = st.columns(3)
-
-                # --- COLONNA 1: ATTRAZIONI ---
                 with col1:
                     m = "Addetto Attrazioni"
                     s_p = presenti_effettivi[presenti_effettivi["Mansione"].apply(norm) == norm(m)]
-                    f_r = fabb_oggi[fabb_oggi["Mansione"].apply(norm) == norm(m)]
-                    r = int(f_r["Quantita"].iloc[0]) if not f_r.empty else 0
-                    n = len(s_p)
+                    f_r = fabb_oggi[fabb_oggi["Mansione"].apply(norm) == norm(m)]; r = int(f_r["Quantita"].iloc[0]) if not f_r.empty else 0; n = len(s_p)
                     c = "#29b05c" if n >= r and r > 0 else "#ff4b4b" if n < r else "#808080"
                     st.markdown(genera_card(m, c, n, r, s_p), unsafe_allow_html=True)
-
-                # --- COLONNA 2: BAGNANTI + BUNGEE (Insieme per stare vicini) ---
                 with col2:
-                    # Assistente Bagnanti
                     m1 = "Assistente Bagnanti"
                     s_p1 = presenti_effettivi[presenti_effettivi["Mansione"].apply(norm) == norm(m1)]
-                    f_r1 = fabb_oggi[fabb_oggi["Mansione"].apply(norm) == norm(m1)]
-                    r1 = int(f_r1["Quantita"].iloc[0]) if not f_r1.empty else 0
-                    n1 = len(s_p1)
+                    f_r1 = fabb_oggi[fabb_oggi["Mansione"].apply(norm) == norm(m1)]; r1 = int(f_r1["Quantita"].iloc[0]) if not f_r1.empty else 0; n1 = len(s_p1)
                     c1 = "#29b05c" if n1 >= r1 and r1 > 0 else "#ff4b4b" if n1 < r1 else "#808080"
                     st.markdown(genera_card(m1, c1, n1, r1, s_p1), unsafe_allow_html=True)
-
-                    # Bungee Jumping (Subito sotto nella stessa colonna)
                     m2 = "Bungee Jumping"
                     s_p2 = presenti_effettivi[presenti_effettivi["Mansione"].apply(norm) == norm(m2)]
-                    f_r2 = fabb_oggi[fabb_oggi["Mansione"].apply(norm) == norm(m2)]
-                    r2 = int(f_r2["Quantita"].iloc[0]) if not f_r2.empty else 0
-                    n2 = len(s_p2)
+                    f_r2 = fabb_oggi[fabb_oggi["Mansione"].apply(norm) == norm(m2)]; r2 = int(f_r2["Quantita"].iloc[0]) if not f_r2.empty else 0; n2 = len(s_p2)
                     c2 = "#29b05c" if n2 >= r2 and r2 > 0 else "#ff4b4b" if n2 < r2 else "#808080"
                     st.markdown(genera_card(m2, c2, n2, r2, s_p2), unsafe_allow_html=True)
-
-                # --- COLONNA 3: RADIO ---
                 with col3:
                     m3 = "Radio"
                     s_p3 = presenti_effettivi[presenti_effettivi["Mansione"].apply(norm) == norm(m3)]
-                    f_r3 = fabb_oggi[fabb_oggi["Mansione"].apply(norm) == norm(m3)]
-                    r3 = int(f_r3["Quantita"].iloc[0]) if not f_r3.empty else 0
-                    n3 = len(s_p3)
+                    f_r3 = fabb_oggi[fabb_oggi["Mansione"].apply(norm) == norm(m3)]; r3 = int(f_r3["Quantita"].iloc[0]) if not f_r3.empty else 0; n3 = len(s_p3)
                     c3 = "#29b05c" if n3 >= r3 and r3 > 0 else "#ff4b4b" if n3 < r3 else "#808080"
                     st.markdown(genera_card(m3, c3, n3, r3, s_p3), unsafe_allow_html=True)
+
 # --- 2. RIEPILOGO RIPOSI ---
 elif menu == "📅 Riepilogo Riposi Settimanali":
-    st.header("Riepilogo Giorni di Riposo")
+    st.header("Riepilogo Giorni di Riposo (Solo Attivi)")
     for m in lista_postazioni:
         with st.expander(f"📍 {m}", expanded=True):
-            add_m = data["addetti"][data["addetti"]["Mansione"] == m]
+            # Filtro per mostrare solo chi è attivo
+            add_m = data["addetti"][(data["addetti"]["Mansione"] == m) & (data["addetti"]["Stato Rapporto"] == "Attivo")]
             c_rip = st.columns(7)
             for i, g in enumerate(giorni_ita):
                 with c_rip[i]:
@@ -270,28 +234,26 @@ elif menu == "📅 Riepilogo Riposi Settimanali":
 
 # --- 3. GESTIONE RIPOSI RAPIDA ---
 elif menu == "📝 Gestione Riposi Rapida":
-    st.header("Gestione Rapida Riposi Settimanali")
+    st.header("Gestione Rapida Riposi (Solo Attivi)")
     df_mod = data["addetti"].copy()
+    # Filtriamo per lavorare solo con gli attivi
+    df_attivi = df_mod[df_mod["Stato Rapporto"] == "Attivo"]
     for m in lista_postazioni:
-        add_m = df_mod[df_mod["Mansione"] == m]
+        add_m = df_attivi[df_attivi["Mansione"] == m]
         if not add_m.empty:
             st.markdown(f"### 📍 {m}")
             conteggi = add_m["GiornoRiposoSettimanale"].value_counts()
             cols_c = st.columns(7)
             for i, g in enumerate(giorni_ita):
                 n_rip = conteggi.get(g, 0)
-                with cols_c[i]: 
-                    st.markdown(f"<div style='text-align:center; background:rgba(128,128,128,0.05); border: 1px solid rgba(128,128,128,0.1); border-radius:5px; padding:5px;'><small>{g[:3]}</small><br><b style='color:#1f77b4;'>{n_rip}</b></div>", unsafe_allow_html=True)
-            st.markdown("<div style='margin-top: 15px;'></div>", unsafe_allow_html=True)
+                with cols_c[i]: st.markdown(f"<div style='text-align:center; background:rgba(128,128,128,0.05); border: 1px solid rgba(128,128,128,0.1); border-radius:5px; padding:5px;'><small>{g[:3]}</small><br><b style='color:#1f77b4;'>{n_rip}</b></div>", unsafe_allow_html=True)
             for idx, row in add_m.iterrows():
                 with st.container():
                     col_nome, col_scelta = st.columns([2, 1])
-                    with col_nome:
-                        st.markdown(f"""<div style="padding-top: 15px; padding-bottom: 10px; border-bottom: 1px solid #f0f2f6;"><span style="font-size: 16px;">{row['Nome']} <b>{row['Cognome']}</b></span></div>""", unsafe_allow_html=True)
+                    with col_nome: st.markdown(f"""<div style="padding-top: 15px; padding-bottom: 10px; border-bottom: 1px solid #f0f2f6;"><span style="font-size: 16px;">{row['Nome']} <b>{row['Cognome']}</b></span></div>""", unsafe_allow_html=True)
                     with col_scelta:
                         st.markdown("<div style='margin-top: 8px;'></div>", unsafe_allow_html=True)
                         df_mod.at[idx, 'GiornoRiposoSettimanale'] = st.selectbox(f"Riposo {idx}", opzioni_riposo, index=opzioni_riposo.index(row['GiornoRiposoSettimanale']) if row['GiornoRiposoSettimanale'] in opzioni_riposo else 7, key=f"r_rap_{idx}", label_visibility="collapsed")
-            st.markdown("<br>", unsafe_allow_html=True)
     if st.button("💾 Salva Tutte le Modifiche", type="primary", use_container_width=True):
         conn.update(worksheet="Addetti", data=df_mod); st.cache_data.clear(); st.success("Salvato!"); st.rerun()
 
@@ -299,7 +261,8 @@ elif menu == "📝 Gestione Riposi Rapida":
 elif menu == "📅 Area Disponibilità Staff":
     st.header("Calendario Disponibilità Individuale")
     df_t = data["addetti"].copy()
-    df_t['Full'] = df_t['Nome'] + " " + df_t['Cognome']
+    # Mostriamo anche i cessati nel calendario per storico, ma segnaliamolo
+    df_t['Full'] = df_t['Nome'] + " " + df_t['Cognome'] + df_t['Stato Rapporto'].apply(lambda x: " (CESSATO)" if x != "Attivo" else "")
     sel_dip = st.selectbox("Seleziona dipendente:", df_t['Full'].tolist())
     row_d = df_t[df_t['Full'] == sel_dip].iloc[0]
     df_p = data["disp"][(data["disp"]["Nome"] == row_d['Nome']) & (data["disp"]["Cognome"] == row_d['Cognome'])]
@@ -324,41 +287,56 @@ elif menu == "👥 Gestione Anagrafica":
         row = data["addetti"].loc[idx]
         with st.form("edit"):
             st.subheader(f"Modifica: {row['Nome']} {row['Cognome']}")
-            c1, c2 = st.columns(2)
+            c1, c2, c3 = st.columns([2, 2, 1])
             en, ec = c1.text_input("Nome", row['Nome']), c2.text_input("Cognome", row['Cognome'])
+            # NUOVO CAMPO: Stato Rapporto
+            attuale_stato = row['Stato Rapporto'] if 'Stato Rapporto' in row else "Attivo"
+            estato = c3.selectbox("Stato", ["Attivo", "Dimesso", "Licenziato"], index=["Attivo", "Dimesso", "Licenziato"].index(attuale_stato) if attuale_stato in ["Attivo", "Dimesso", "Licenziato"] else 0)
+            
+            c1, c2 = st.columns(2)
             em = c1.selectbox("Mansione", lista_postazioni, index=lista_postazioni.index(row['Mansione']) if row['Mansione'] in lista_postazioni else 0)
             er = c2.selectbox("Riposo", opzioni_riposo, index=opzioni_riposo.index(row['GiornoRiposoSettimanale']) if row['GiornoRiposoSettimanale'] in opzioni_riposo else 7)
+            
+            # NUOVO CAMPO: Data Cessazione
+            attuale_data_cess = row['Data Cessazione'] if 'Data Cessazione' in row and pd.notna(row['Data Cessazione']) else ""
+            edata_cess = st.text_input("Data di uscita (se non attivo)", value=attuale_data_cess)
+            
             val_cont = str(row['Contestazioni']) if 'Contestazioni' in row and pd.notna(row['Contestazioni']) else ""
             e_cont = st.text_area("Lettere di Contestazione", value=val_cont)
+            
             cb1, cb2, _ = st.columns([1,1,2])
             if cb1.form_submit_button("💾 Salva"):
-                new_data_row = [en, ec, em, er, e_cont]
-                cols_target = ["Nome", "Cognome", "Mansione", "GiornoRiposoSettimanale", "Contestazioni"]
-                for i, col in enumerate(cols_target):
-                    data["addetti"].at[idx, col] = new_data_row[i]
+                new_data_row = {
+                    "Nome": en, "Cognome": ec, "Mansione": em, 
+                    "GiornoRiposoSettimanale": er, "Contestazioni": e_cont,
+                    "Stato Rapporto": estato, "Data Cessazione": edata_cess
+                }
+                for col, val in new_data_row.items(): data["addetti"].at[idx, col] = val
                 conn.update(worksheet="Addetti", data=data["addetti"]); st.cache_data.clear(); st.session_state["editing_id"] = None; st.rerun()
-            if cb2.form_submit_button("❌ Annulla"):
-                st.session_state["editing_id"] = None; st.rerun()
+            if cb2.form_submit_button("❌ Annulla"): st.session_state["editing_id"] = None; st.rerun()
     else:
         t1, t2 = st.tabs(["📋 Elenco Staff", "➕ Nuovo Addetto"])
         with t1:
-            for idx, r in data["addetti"].iterrows():
+            filtro_lista = st.radio("Mostra:", ["Solo Attivi", "Tutti"], horizontal=True)
+            df_lista = data["addetti"] if filtro_lista == "Tutti" else data["addetti"][data["addetti"]["Stato Rapporto"] == "Attivo"]
+            
+            for idx, r in df_lista.iterrows():
                 disp_addetto = data["disp"][(data["disp"]["Nome"] == r['Nome']) & (data["disp"]["Cognome"] == r['Cognome'])]
                 conteggi = disp_addetto["Stato"].value_counts()
-                
-                # MODIFICA RICHIESTA: Font ingrandito (15px) e grassetto
                 sum_str = f"✅ Disponibile: {conteggi.get('Disponibile', 0)} | 🔵 Permessi: {conteggi.get('Permesso', 0)} | ⚫ Assente: {conteggi.get('Assente', 0)} | 🔘 Malattia: {conteggi.get('Malattia', 0)}"
-
                 with st.container():
                     c1, c2, c3 = st.columns([3, 3, 1])
                     has_cont = 'Contestazioni' in r and pd.notna(r['Contestazioni']) and str(r['Contestazioni']).strip() != ""
-                    c1.markdown(f"**{r['Nome']} {r['Cognome']}**{' 🚩' if has_cont else ''}")
+                    
+                    # Evidenziazione visiva per i cessati
+                    nome_label = f"{r['Nome']} {r['Cognome']}"
+                    if r['Stato Rapporto'] != "Attivo":
+                        nome_label = f"🚫 {nome_label} ({r['Stato Rapporto'].upper()})"
+                    
+                    c1.markdown(f"**{nome_label}**{' 🚩' if has_cont else ''}")
                     c2.caption(f"{r['Mansione']} | Riposo: {r['GiornoRiposoSettimanale']}")
                     if c3.button("✏️", key=f"ed_{idx}"): st.session_state["editing_id"] = idx; st.rerun()
-                    
-                    # RIGA MODIFICATA (Font ingrandito a 15px e Bold)
                     st.markdown(f"<div style='font-size: 15px; font-weight: bold; color: #444; margin-top: -10px; margin-bottom: 5px;'>{sum_str}</div>", unsafe_allow_html=True)
-                    
                     if has_cont:
                         with st.expander("Vedi contestazioni"): st.warning(r['Contestazioni'])
                     st.divider()
@@ -368,11 +346,11 @@ elif menu == "👥 Gestione Anagrafica":
                 nm, nr = st.selectbox("Mansione", lista_postazioni), st.selectbox("Riposo", opzioni_riposo)
                 ncnt = st.text_area("Contestazioni iniziali")
                 if st.form_submit_button("Aggiungi"):
-                    new_member = pd.DataFrame([{"Nome":nn, "Cognome":nc, "Mansione":nm, "GiornoRiposoSettimanale":nr, "Contestazioni":ncnt}])
+                    new_member = pd.DataFrame([{"Nome":nn, "Cognome":nc, "Mansione":nm, "GiornoRiposoSettimanale":nr, "Contestazioni":ncnt, "Stato Rapporto": "Attivo", "Data Cessazione": ""}])
                     conn.update(worksheet="Addetti", data=pd.concat([data["addetti"], new_member], ignore_index=True))
                     st.cache_data.clear(); st.rerun()
 
-# --- ALTRE SEZIONI ---
+# --- ALTRE SEZIONI (INVARIATE MA AGGIUNTE PER COMPLETEZZA) ---
 elif menu == "⚙️ Pianifica Fabbisogno":
     st.header("Fabbisogno")
     tipo = st.radio("Modalità:", ["Giorno Singolo", "Intervallo"], horizontal=True)
