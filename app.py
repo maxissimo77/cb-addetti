@@ -94,16 +94,17 @@ except Exception:
 
 # --- LOGIN ---
 if "role" not in st.session_state:
-    # Centratura del logo e rimozione scritte superflue
-    col_l1, col_l2, col_l3 = st.columns([1, 1, 1])
-    with col_l2:
+    # Riduzione larghezza colonna centrale per rimpicciolire il logo (proporzioni 2, 1, 2)
+    col_p1, col_p2, col_p3 = st.columns([2, 1, 2])
+    with col_p2:
+        # Logo rimpicciolito grazie alla colonna più stretta
         st.image("https://www.caribebay.it/sites/default/files/caribebay-logo.png", use_container_width=True)
-    
+        
     st.markdown("<br>", unsafe_allow_html=True)
     
-    # Box di login centrato
-    col_p1, col_p2, col_p3 = st.columns([1, 1, 1])
-    with col_p2:
+    # Box di login centrato (proporzioni 1.5, 1, 1.5 per allinearlo al logo ridotto)
+    col_p4, col_p5, col_p6 = st.columns([1.5, 1, 1.5])
+    with col_p5:
         pwd_input = st.text_input("Inserisci Password", type="password")
         if st.button("Accedi", use_container_width=True):
             if pwd_input == admin_pwd: 
