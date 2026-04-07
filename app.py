@@ -75,7 +75,7 @@ def format_wa_link(row):
     if len(tel) <= 10:
         tel = "39" + tel
     
-    msg = f"Ciao {row['Nome']}, ti confermiamo che il tuo giorno di riposo settimanale è il {row['GiornoRiposoSettimanale']}. A presto!"
+    msg = f"Ciao {row['Nome']}, "
     msg_encoded = urllib.parse.quote(msg)
     return f"https://wa.me/{tel}?text={msg_encoded}"
 
