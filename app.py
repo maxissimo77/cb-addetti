@@ -270,7 +270,7 @@ if menu == "📊 Dashboard":
                         c = "#29b05c" if n >= r and r > 0 else "#ff4b4b" if n < r else "#808080"
                         st.markdown(genera_card(m, c, n, r, s_p), unsafe_allow_html=True)
 
-# --- 2. RIEPILOGO RIPOSI (Grafica con Riquadri Ripristinata) ---
+# --- 2. RIEPILOGO RIPOSI (Grafica con Riquadri e Non Definiti in Box) ---
 elif menu == "📅 Riepilogo Riposi Settimanali":
     st.title("📅 Piano Riposi Settimanali")
     
@@ -284,24 +284,41 @@ elif menu == "📅 Riepilogo Riposi Settimanali":
             with col_tit:
                 st.markdown(f"### 📍 {m}")
             with col_pdf:
-                st.download_button("📄 Esporta PDF", genera_pdf_riposi(m, add_m, giorni_ita), f"Riposi_{m}.pdf", "application/pdf", key=f"pdf_{m}")
+                st.download_button("📄 PDF", genera_pdf_riposi(m, add_m, giorni_ita), f"Riposi_{m}.pdf", "application/pdf", key=f"pdf_{m}")
             
-            # Contenitore con bordo e ombra per l'intera mansione
+            # Prepariamo la lista dei giorni includendo l'eventuale colonna "Non Definito"
+            colonne_riposo = giorni_ita.copy()
+            if not add_m[add_m["GiornoRiposoSettimanale"] == "Non Definito"].empty:
+                colonne_riposo.append("Non Definito")
+
+            # Calcolo larghezza dinamica per le colonne (100% / numero di colonne)
+            width_perc = 100 / len(colonne_riposo)
+
+            # Generazione HTML del Box
+            html_giorni = ""
+            for g in colonne_riposo:
+                # Colore diverso se è "Non Definito"
+                header_bg = "#1f77b4" if g != "Non Definito" else "#6c757d"
+                label = g[:3].upper() if g != "Non Definito" else "N.D."
+                
+                # Estrazione persone per quel giorno
+                persone = add_m[add_m["GiornoRiposoSettimanale"] == g]
+                badges = "".join([f'<div class="name-badge" style="text-align:center; border-left:none; background:#f8f9fa; font-size:11px;">{r["Nome"]} {r["Cognome"]}</div>' for _, r in persone.iterrows()])
+                
+                html_giorni += f"""
+                    <div style="width: {width_perc}%; text-align: center; padding: 0 5px;">
+                        <div style="background:{header_bg}; color:white; border-radius:5px; padding:5px; font-weight:bold; margin-bottom:10px; font-size:12px;">{label}</div>
+                        {badges}
+                    </div>
+                """
+
             st.markdown(f"""
                 <div style="border: 1px solid #ddd; border-radius: 12px; background: white; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 30px;">
-                    <div style="display: flex; flex-direction: row; justify-content: space-between;">
-                        {''.join([f'<div style="width: 13%; text-align: center;"><div style="background:#1f77b4; color:white; border-radius:5px; padding:5px; font-weight:bold; margin-bottom:10px;">{g[:3].upper()}</div>' + 
-                        ''.join([f'<div class="name-badge" style="text-align:center; border-left:none; background:#f8f9fa;">{r["Nome"]} {r["Cognome"]}</div>' 
-                                 for _, r in add_m[add_m["GiornoRiposoSettimanale"] == g].iterrows()]) + 
-                        '</div>' for g in giorni_ita])}
+                    <div style="display: flex; flex-direction: row; justify-content: flex-start; align-items: flex-start;">
+                        {html_giorni}
                     </div>
                 </div>
             """, unsafe_allow_html=True)
-            
-            # Controllo per i "Non Definiti" fuori dal riquadro principale per chiarezza
-            non_def = add_m[add_m["GiornoRiposoSettimanale"] == "Non Definito"]
-            if not non_def.empty:
-                st.markdown(f"<p style='color:gray; font-size:0.9rem;'><b>Senza riposo assegnato:</b> {', '.join([f'{r.Nome} {r.Cognome}' for _, r in non_def.iterrows()])}</p>", unsafe_allow_html=True)
 
 # --- 3. GESTIONE RIPOSI RAPIDA ---
 elif menu == "📝 Gestione Riposi Rapida":
