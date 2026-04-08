@@ -4,7 +4,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 import calendar
 import urllib.parse
-from i o import BytesIO
+from io import BytesIO
 
 # --- LIBRERIE PER PDF (Originali dal tuo codice) ---
 from reportlab.lib import colors
