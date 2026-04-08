@@ -315,14 +315,7 @@ elif menu == "📅 Riepilogo Riposi Settimanali":
             
             st.markdown("<br>", unsafe_allow_html=True)
 
-         Hai perfettamente ragione, nella Gestione Rapida è fondamentale avere sott'occhio il totale dei riposi per ogni giorno della settimana, così da non lasciare scoperte le postazioni.
-
-Ho aggiunto una riga di 7 box riepilogativi (metrica) in cima alla pagina che si aggiornano in tempo reale contandoti quanti dipendenti riposano in ogni giorno della settimana.
-
-Sostituisci la sezione 3. GESTIONE RIPOSI RAPIDA con questo codice:
-
-Python
-# --- 3. GESTIONE RIPOSI RAPIDA (Con Riepilogo Somme) ---
+        # --- 3. GESTIONE RIPOSI RAPIDA (Con Riepilogo Somme) ---
 elif menu == "📝 Gestione Riposi Rapida":
     st.title("📝 Modifica Rapida Riposi")
     
