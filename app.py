@@ -270,7 +270,7 @@ if menu == "📊 Dashboard":
                         c = "#29b05c" if n >= r and r > 0 else "#ff4b4b" if n < r else "#808080"
                         st.markdown(genera_card(m, c, n, r, s_p), unsafe_allow_html=True)
 
-# --- 2. RIEPILOGO RIPOSI (Nuova Versione con Container Nativi) ---
+# --- 2. RIEPILOGO RIPOSI (Layout con Non Definiti SOTTO) ---
 elif menu == "📅 Riepilogo Riposi Settimanali":
     st.title("📅 Piano Riposi Settimanali")
     
@@ -284,34 +284,30 @@ elif menu == "📅 Riepilogo Riposi Settimanali":
             with col_pdf:
                 st.download_button("📄 PDF", genera_pdf_riposi(m, add_m, giorni_ita), f"Riposi_{m}.pdf", "application/pdf", key=f"pdf_{m}")
             
-            # Creiamo il BOX bianco usando il container nativo di Streamlit
+            # --- BOX PRINCIPALE (Lunedì -> Domenica) ---
             with st.container(border=True):
-                # Prepariamo i giorni e l'eventuale colonna N.D.
-                col_names = giorni_ita.copy()
-                has_nd = not add_m[add_m["GiornoRiposoSettimanale"] == "Non Definito"].empty
-                if has_nd:
-                    col_names.append("Non Definito")
-                
-                # Creiamo le colonne fisicamente
-                cols = st.columns(len(col_names))
-                
-                for i, g in enumerate(col_names):
+                cols = st.columns(7)
+                for i, g in enumerate(giorni_ita):
                     with cols[i]:
-                        # Header del giorno
-                        header_color = "#1f77b4" if g != "Non Definito" else "#6c757d"
-                        label = g[:3].upper() if g != "Non Definito" else "N.D."
-                        
                         st.markdown(f"""
-                            <div style="background:{header_color}; color:white; border-radius:5px; padding:2px; text-align:center; font-weight:bold; font-size:12px; margin-bottom:10px;">
-                                {label}
+                            <div style="background:#1f77b4; color:white; border-radius:5px; padding:2px; text-align:center; font-weight:bold; font-size:12px; margin-bottom:10px;">
+                                {g[:3].upper()}
                             </div>
                         """, unsafe_allow_html=True)
                         
-                        # Lista persone
                         persone = add_m[add_m["GiornoRiposoSettimanale"] == g]
                         for _, r in persone.iterrows():
-                            # Usiamo il badge definito nel CSS iniziale
                             st.markdown(f'<div class="name-badge" style="text-align:center; border-left:none; background:#f8f9fa; font-size:11px;">{r["Nome"]} {r["Cognome"]}</div>', unsafe_allow_html=True)
+
+            # --- BOX SEPARATO PER NON DEFINITI (SOTTO) ---
+            non_def = add_m[add_m["GiornoRiposoSettimanale"] == "Non Definito"]
+            if not non_def.empty:
+                st.markdown("<p style='margin-bottom:-10px; margin-top:10px; font-weight:bold; color:#666; font-size:0.9rem;'>Senza riposo assegnato:</p>", unsafe_allow_html=True)
+                with st.container(border=True):
+                    # Mostriamo i nomi in riga (flex-wrap) per non occupare troppo spazio verticale
+                    nomi_nd = "".join([f'<span class="name-badge" style="display:inline-block; margin-right:8px; border-left:4px solid #6c757d;">{r["Nome"]} {r["Cognome"]}</span>' for _, r in non_def.iterrows()])
+                    st.markdown(f'<div style="display:flex; flex-wrap:wrap;">{nomi_nd}</div>', unsafe_allow_html=True)
+            
             st.markdown("<br>", unsafe_allow_html=True)
 
             # 3. RENDERIZZIAMO TUTTO (Assicurati che questa parte sia identica)
