@@ -214,7 +214,7 @@ if st.sidebar.button("Logout"):
     for key in list(st.session_state.keys()): del st.session_state[key]
     st.rerun()
 
-# --- 1. DASHBOARD (Logica Originale + Card Moderne) ---
+# --- 1. DASHBOARD ---
 if menu == "📊 Dashboard":
     st.title("📍 Stato Occupazione Parco")
     input_d = st.date_input("Inizio visualizzazione (settimana):", default_date)
@@ -261,15 +261,40 @@ if menu == "📊 Dashboard":
                 staff_base["RIPOSO_NORM"] = staff_base["GiornoRiposoSettimanale"].apply(norm)
                 presenti_effettivi = staff_base[(staff_base["RIPOSO_NORM"] != giorno_sett_oggi) & (~staff_base["ID_UNICO"].isin(lista_nera_nomi))]
 
+                # --- NUOVA LOGICA COLONNE PER ORDINAMENTO SPECIFICO ---
                 col1, col2, col3 = st.columns(3)
-                mansioni_target = ["Addetto Attrazioni", "Assistente Bagnanti", "Bungee Jumping", "Radio"]
-                for i, m in enumerate(mansioni_target):
-                    with [col1, col2, col3][i % 3]:
-                        s_p = presenti_effettivi[presenti_effettivi["Mansione"].apply(norm) == norm(m)]
-                        f_r = fabb_oggi[fabb_oggi["Mansione"].apply(norm) == norm(m)]; r = int(f_r["Quantita"].iloc[0]) if not f_r.empty else 0; n = len(s_p)
-                        c = "#29b05c" if n >= r and r > 0 else "#ff4b4b" if n < r else "#808080"
-                        st.markdown(genera_card(m, c, n, r, s_p), unsafe_allow_html=True)
+                
+                # Colonna 1: Addetto Attrazioni
+                with col1:
+                    m = "Addetto Attrazioni"
+                    s_p = presenti_effettivi[presenti_effettivi["Mansione"].apply(norm) == norm(m)]
+                    f_r = fabb_oggi[fabb_oggi["Mansione"].apply(norm) == norm(m)]; r = int(f_r["Quantita"].iloc[0]) if not f_r.empty else 0; n = len(s_p)
+                    c = "#29b05c" if n >= r and r > 0 else "#ff4b4b" if n < r else "#808080"
+                    st.markdown(genera_card(m, c, n, r, s_p), unsafe_allow_html=True)
 
+                # Colonna 2: Assistente Bagnanti E Radio SOTTO
+                with col2:
+                    # Assistente Bagnanti
+                    m1 = "Assistente Bagnanti"
+                    s_p1 = presenti_effettivi[presenti_effettivi["Mansione"].apply(norm) == norm(m1)]
+                    f_r1 = fabb_oggi[fabb_oggi["Mansione"].apply(norm) == norm(m1)]; r1 = int(f_r1["Quantita"].iloc[0]) if not f_r1.empty else 0; n1 = len(s_p1)
+                    c1 = "#29b05c" if n1 >= r1 and r1 > 0 else "#ff4b4b" if n1 < r1 else "#808080"
+                    st.markdown(genera_card(m1, c1, n1, r1, s_p1), unsafe_allow_html=True)
+                    
+                    # Radio (Appare sotto Assistente Bagnanti nella stessa colonna)
+                    m2 = "Radio"
+                    s_p2 = presenti_effettivi[presenti_effettivi["Mansione"].apply(norm) == norm(m2)]
+                    f_r2 = fabb_oggi[fabb_oggi["Mansione"].apply(norm) == norm(m2)]; r2 = int(f_r2["Quantita"].iloc[0]) if not f_r2.empty else 0; n2 = len(s_p2)
+                    c2 = "#29b05c" if n2 >= r2 and r2 > 0 else "#ff4b4b" if n2 < r2 else "#808080"
+                    st.markdown(genera_card(m2, c2, n2, r2, s_p2), unsafe_allow_html=True)
+
+                # Colonna 3: Bungee Jumping
+                with col3:
+                    m = "Bungee Jumping"
+                    s_p = presenti_effettivi[presenti_effettivi["Mansione"].apply(norm) == norm(m)]
+                    f_r = fabb_oggi[fabb_oggi["Mansione"].apply(norm) == norm(m)]; r = int(f_r["Quantita"].iloc[0]) if not f_r.empty else 0; n = len(s_p)
+                    c = "#29b05c" if n >= r and r > 0 else "#ff4b4b" if n < r else "#808080"
+                    st.markdown(genera_card(m, c, n, r, s_p), unsafe_allow_html=True)
 # --- 2. RIEPILOGO RIPOSI (Layout Corretto e Senza Errori) ---
 elif menu == "📅 Riepilogo Riposi Settimanali":
     st.title("📅 Piano Riposi Settimanali")
