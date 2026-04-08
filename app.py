@@ -270,28 +270,38 @@ if menu == "📊 Dashboard":
                         c = "#29b05c" if n >= r and r > 0 else "#ff4b4b" if n < r else "#808080"
                         st.markdown(genera_card(m, c, n, r, s_p), unsafe_allow_html=True)
 
-# --- 2. RIEPILOGO RIPOSI (Logica Originale + Grafica Pulita) ---
+# --- 2. RIEPILOGO RIPOSI (Grafica con Riquadri Ripristinata) ---
 elif menu == "📅 Riepilogo Riposi Settimanali":
     st.title("📅 Piano Riposi Settimanali")
+    
     for m in lista_postazioni:
+        # Filtro addetti attivi per la mansione specifica
         add_m = data["addetti"][(data["addetti"]["Mansione"] == m) & (data["addetti"]["Stato Rapporto"] == "Attivo")]
+        
         if not add_m.empty:
+            # Layout Intestazione Mansione + Pulsante PDF
             col_tit, col_pdf = st.columns([5, 1])
-            col_tit.subheader(f"📍 {m}")
-            col_pdf.download_button("📄 Esporta PDF", genera_pdf_riposi(m, add_m, giorni_ita), f"Riposi_{m}.pdf", "application/pdf", key=f"pdf_{m}")
+            with col_tit:
+                st.markdown(f"### 📍 {m}")
+            with col_pdf:
+                st.download_button("📄 Esporta PDF", genera_pdf_riposi(m, add_m, giorni_ita), f"Riposi_{m}.pdf", "application/pdf", key=f"pdf_{m}")
             
-            with st.expander(f"Dettagli Riposi {m}", expanded=True):
-                c_rip = st.columns(7)
-                for i, g in enumerate(giorni_ita):
-                    with c_rip[i]:
-                        st.markdown(f"<div style='text-align:center; background:#1f77b4; color:white; border-radius:5px; padding:2px; margin-bottom:10px;'><b>{g[:3].upper()}</b></div>", unsafe_allow_html=True)
-                        for _, r in add_m[add_m["GiornoRiposoSettimanale"] == g].iterrows():
-                            st.markdown(f"<div class='name-badge' style='text-align:center; border-left:none; background:#e9ecef; color:#444;'>{r['Nome']} {r['Cognome']}</div>", unsafe_allow_html=True)
-                
-                non_def = add_m[add_m["GiornoRiposoSettimanale"] == "Non Definito"]
-                if not non_def.empty:
-                    st.markdown("---")
-                    st.markdown("**Riposi Non Definiti:** " + ", ".join([f"{r['Nome']} {r['Cognome']}" for _, r in non_def.iterrows()]))
+            # Contenitore con bordo e ombra per l'intera mansione
+            st.markdown(f"""
+                <div style="border: 1px solid #ddd; border-radius: 12px; background: white; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 30px;">
+                    <div style="display: flex; flex-direction: row; justify-content: space-between;">
+                        {''.join([f'<div style="width: 13%; text-align: center;"><div style="background:#1f77b4; color:white; border-radius:5px; padding:5px; font-weight:bold; margin-bottom:10px;">{g[:3].upper()}</div>' + 
+                        ''.join([f'<div class="name-badge" style="text-align:center; border-left:none; background:#f8f9fa;">{r["Nome"]} {r["Cognome"]}</div>' 
+                                 for _, r in add_m[add_m["GiornoRiposoSettimanale"] == g].iterrows()]) + 
+                        '</div>' for g in giorni_ita])}
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
+            
+            # Controllo per i "Non Definiti" fuori dal riquadro principale per chiarezza
+            non_def = add_m[add_m["GiornoRiposoSettimanale"] == "Non Definito"]
+            if not non_def.empty:
+                st.markdown(f"<p style='color:gray; font-size:0.9rem;'><b>Senza riposo assegnato:</b> {', '.join([f'{r.Nome} {r.Cognome}' for _, r in non_def.iterrows()])}</p>", unsafe_allow_html=True)
 
 # --- 3. GESTIONE RIPOSI RAPIDA ---
 elif menu == "📝 Gestione Riposi Rapida":
