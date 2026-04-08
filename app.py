@@ -392,7 +392,7 @@ elif menu == "📅 Area Disponibilità Staff":
             old = data["disp"][~((data["disp"]["Nome"] == row_d['Nome']) & (data["disp"]["Cognome"] == row_d['Cognome']) & (data["disp"]["Data"].astype(str).isin(d_list)))]
             conn.update(worksheet="Disponibilita", data=pd.concat([old, nuovi], ignore_index=True)); st.cache_data.clear(); st.rerun()
 
-# --- 5. GESTIONE ANAGRAFICA (Inclusa Data Cessazione) ---
+# --- 5. GESTIONE ANAGRAFICA (Versione Corretta Anti-Crash) ---
 elif menu == "👥 Gestione Anagrafica":
     st.title("👥 Anagrafica Personale")
     
@@ -401,19 +401,20 @@ elif menu == "👥 Gestione Anagrafica":
 
     if st.session_state["editing_id"] is not None:
         idx = st.session_state["editing_id"]
+        # Recupero sicuro della riga tramite l'indice
         row = data["addetti"].loc[idx]
-        with st.form("edit_form"):
+        
+        with st.form("edit_form_new"):
             st.subheader(f"Modifica Profilo: {row['Nome']} {row['Cognome']}")
             c1, c2, c3 = st.columns(3)
             en = c1.text_input("Nome", row['Nome'])
             ec = c2.text_input("Cognome", row['Cognome'])
             estato = c3.selectbox("Stato Rapporto", ["Attivo", "Dimesso", "Licenziato"], 
-                                  index=["Attivo", "Dimesso", "Licenziato"].index(row['Stato Rapporto']) if row['Stato Rapporto'] in ["Attivo", "Dimesso", "Licenziato"] else 0)
+                                 index=["Attivo", "Dimesso", "Licenziato"].index(row['Stato Rapporto']) if row['Stato Rapporto'] in ["Attivo", "Dimesso", "Licenziato"] else 0)
             
             c_tel, c_mail, c_cess = st.columns(3)
             etel = c_tel.text_input("Cellulare", row['Cellulare'])
             email = c_mail.text_input("Email", row['Email'])
-            # Campo data cessazione: visibile se lo stato non è Attivo
             e_data_cess = c_cess.text_input("Data Cessazione (gg/mm/aaaa)", row.get('Data Cessazione', ''))
             
             c_man, c_rip = st.columns(2)
@@ -433,11 +434,13 @@ elif menu == "👥 Gestione Anagrafica":
                 data["addetti"].at[idx, 'GiornoRiposoSettimanale'] = er
                 data["addetti"].at[idx, 'Contestazioni'] = e_cont
                 data["addetti"].at[idx, 'Data Cessazione'] = e_data_cess
+                
                 conn.update(worksheet="Addetti", data=data["addetti"])
                 st.cache_data.clear()
                 st.session_state["editing_id"] = None
                 st.success("Dati aggiornati correttamente!")
                 st.rerun()
+            
             if cb2.form_submit_button("❌ ANNULLA", use_container_width=True):
                 st.session_state["editing_id"] = None
                 st.rerun()
@@ -446,22 +449,18 @@ elif menu == "👥 Gestione Anagrafica":
         t1, t2 = st.tabs(["📋 Elenco Personale", "➕ Aggiungi Nuovo"])
         
         with t1:
-            # --- NUOVA RIGA FILTRI ---
             col_f1, col_f2 = st.columns([1, 1])
             with col_f1:
-                filtro_stato = st.radio("Stato:", ["Solo Attivi", "Tutti"], horizontal=True)
+                filtro_stato = st.radio("Filtra Stato:", ["Solo Attivi", "Tutti"], horizontal=True, key="f_stato_anag")
             with col_f2:
-                # Aggiungiamo "Tutte" come opzione predefinita per il filtro mansione
-                opzioni_filtro_man = ["Tutte"] + lista_postazioni
-                filtro_man = st.selectbox("Filtra per Mansione:", opzioni_filtro_man)
+                filtro_man = st.selectbox("Filtra Mansione:", ["Tutte"] + lista_postazioni, key="f_man_anag")
 
+            # Creiamo una copia per la visualizzazione
             df_display = data["addetti"].copy()
             
-            # Applicazione Filtro Stato
             if filtro_stato == "Solo Attivi":
                 df_display = df_display[df_display["Stato Rapporto"] == "Attivo"]
             
-            # Applicazione Filtro Mansione
             if filtro_man != "Tutte":
                 df_display = df_display[df_display["Mansione"] == filtro_man]
             
@@ -469,74 +468,48 @@ elif menu == "👥 Gestione Anagrafica":
             st.divider()
 
             for idx, r in df_display.iterrows():
-                # ... (il resto del codice dell'elenco rimane identico a quello che hai già)
                 with st.container():
                     c1, c2, c3 = st.columns([3, 5, 1])
+                    
                     wa = format_wa_link(r)
                     wa_html = f' <a href="{wa}" target="_blank" style="text-decoration:none;">📲</a>' if wa else ""
+                    
                     nome_style = "color: #333;" if r['Stato Rapporto'] == "Attivo" else "color: #888; text-decoration: line-through;"
                     c1.markdown(f"<span style='{nome_style} font-weight: bold;'>{r['Nome']} {r['Cognome']}</span>{wa_html}", unsafe_allow_html=True)
                     c1.caption(f"📍 {r['Mansione']}")
+                    
                     info_text = f"📞 {r['Cellulare']} | 📧 {r['Email'] if r['Email'] else 'Nessuna mail'}"
                     c2.markdown(f"<div style='font-size:0.85rem; color:#555;'>{info_text}</div>", unsafe_allow_html=True)
+                    
                     stato_info = f"<b>Stato:</b> {r['Stato Rapporto']}"
                     if r['Stato Rapporto'] != "Attivo" and str(r.get('Data Cessazione', '')).strip() != "":
                         stato_info += f" (dal {r['Data Cessazione']})"
+                    
                     c2.markdown(f"<div style='font-size:0.85rem;'><b>Riposo:</b> {r['GiornoRiposoSettimanale']} | {stato_info}</div>", unsafe_allow_html=True)
+                    
                     if str(r['Contestazioni']).strip() and str(r['Contestazioni']) != "nan":
                         c2.markdown(f"""<div style="background-color:#fff5f5; border-left:3px solid #ff4b4b; padding:5px 10px; margin-top:5px; font-size:0.8rem; color:#c92a2a;">
                                     🚩 <b>Contestazioni:</b> {r['Contestazioni']}</div>""", unsafe_allow_html=True)
-                    if c3.button("✏️", key=f"btn_edit_{idx}"):
-                        st.session_state["editing_id"] = idx
-                        st.rerun()
-                    st.divider()
-
-            for idx, r in df_display.iterrows():
-                with st.container():
-                    c1, c2, c3 = st.columns([3, 5, 1])
                     
-                    wa = format_wa_link(r)
-                    wa_html = f' <a href="{wa}" target="_blank" style="text-decoration:none;">📲</a>' if wa else ""
-                    
-                    # Colore diverso per il nome se non attivo
-                    nome_style = "color: #333;" if r['Stato Rapporto'] == "Attivo" else "color: #888; text-decoration: line-through;"
-                    c1.markdown(f"<span style='{nome_style} font-weight: bold;'>{r['Nome']} {r['Cognome']}</span>{wa_html}", unsafe_allow_html=True)
-                    c1.caption(f"📍 {r['Mansione']}")
-                    
-                    # Dettagli
-                    info_text = f"📞 {r['Cellulare']} | 📧 {r['Email'] if r['Email'] else 'Nessuna mail'}"
-                    c2.markdown(f"<div style='font-size:0.85rem; color:#555;'>{info_text}</div>", unsafe_allow_html=True)
-                    
-                    # Mostra lo stato e, se presente, la data di cessazione
-                    stato_info = f"<b>Stato:</b> {r['Stato Rapporto']}"
-                    if r['Stato Rapporto'] != "Attivo" and str(r.get('Data Cessazione', '')).strip() != "":
-                        stato_info += f" (dal {r['Data Cessazione']})"
-                    
-                    c2.markdown(f"<div style='font-size:0.85rem;'><b>Riposo:</b> {r['GiornoRiposoSettimanale']} | {stato_info}</div>", unsafe_allow_html=True)
-                    
-                    # Contestazioni
-                    if str(r['Contestazioni']).strip() and str(r['Contestazioni']) != "nan":
-                        c2.markdown(f"""<div style="background-color:#fff5f5; border-left:3px solid #ff4b4b; padding:5px 10px; margin-top:5px; font-size:0.8rem; color:#c92a2a;">
-                                        🚩 <b>Contestazioni:</b> {r['Contestazioni']}</div>""", unsafe_allow_html=True)
-                    
-                    if c3.button("✏️", key=f"btn_edit_{idx}"):
+                    # --- CHIAVE UNICA RINFORZATA PER IL BOTTONE ---
+                    # Usiamo 'list' + idx per assicurarci che Streamlit non veda chiavi duplicate
+                    if c3.button("✏️", key=f"btn_list_edit_{idx}"):
                         st.session_state["editing_id"] = idx
                         st.rerun()
                     
                     st.divider()
 
         with t2:
+            # (Il codice per aggiungere nuovo collaboratore rimane lo stesso ma controlla i nomi dei campi)
             st.subheader("Inserisci un nuovo collaboratore")
-            with st.form("nuovo_addetto"):
+            with st.form("nuovo_addetto_form"):
                 nc1, nc2, nc3 = st.columns(3)
                 new_nome = nc1.text_input("Nome")
                 new_cognome = nc2.text_input("Cognome")
                 new_mansione = nc3.selectbox("Mansione", lista_postazioni)
-                
                 new_tel = nc1.text_input("Cellulare")
                 new_mail = nc2.text_input("Email")
                 new_riposo = nc3.selectbox("Giorno di Riposo", opzioni_riposo)
-                
                 new_cont = st.text_area("Note / Contestazioni iniziali")
                 
                 if st.form_submit_button("➕ AGGIUNGI COLLABORATORE", use_container_width=True):
@@ -552,8 +525,6 @@ elif menu == "👥 Gestione Anagrafica":
                         st.cache_data.clear()
                         st.success(f"{new_nome} aggiunto con successo!")
                         st.rerun()
-                    else:
-                        st.error("Nome e Cognome sono obbligatori!")
 
 # --- 6. PIANIFICA FABBISOGNO ---
 elif menu == "⚙️ Pianifica Fabbisogno":
