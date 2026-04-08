@@ -365,14 +365,7 @@ elif menu == "📝 Gestione Riposi Rapida":
                     )
             st.divider()
 
-    st.markdown("<br>", unsafe_allow_html=True)
-    if st.button("💾 SALVA TUTTE LE MODIFICHE", type="primary", use_container_width=True):
-        conn.update(worksheet="Addetti", data=df_mod)
-        st.cache_data.clear()
-        st.success("Modifiche salvate con successo!")
-        st.rerun()
-
-    # --- ELENCO MODIFICA ---
+     # --- ELENCO MODIFICA ---
     for m in lista_postazioni:
         add_m = df_mod[(df_mod["Mansione"] == m) & (df_mod["Stato Rapporto"] == "Attivo")]
         if not add_m.empty:
