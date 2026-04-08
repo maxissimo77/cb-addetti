@@ -315,21 +315,67 @@ elif menu == "📅 Riepilogo Riposi Settimanali":
             
             st.markdown("<br>", unsafe_allow_html=True)
 
-          # --- 3. GESTIONE RIPOSI RAPIDA ---
+         Hai perfettamente ragione, nella Gestione Rapida è fondamentale avere sott'occhio il totale dei riposi per ogni giorno della settimana, così da non lasciare scoperte le postazioni.
+
+Ho aggiunto una riga di 7 box riepilogativi (metrica) in cima alla pagina che si aggiornano in tempo reale contandoti quanti dipendenti riposano in ogni giorno della settimana.
+
+Sostituisci la sezione 3. GESTIONE RIPOSI RAPIDA con questo codice:
+
+Python
+# --- 3. GESTIONE RIPOSI RAPIDA (Con Riepilogo Somme) ---
 elif menu == "📝 Gestione Riposi Rapida":
     st.title("📝 Modifica Rapida Riposi")
+    
     df_mod = data["addetti"].copy()
+    # Consideriamo solo gli attivi per il conteggio e la modifica
+    addetti_attivi = df_mod[df_mod["Stato Rapporto"] == "Attivo"]
+
+    # --- RIGA RIEPILOGO SOMME ---
+    st.markdown("##### 📊 Riepilogo Riposi Settimanali (Totale Addetti)")
+    conteggi = addetti_attivi["GiornoRiposoSettimanale"].value_counts()
+    
+    cols_count = st.columns(7)
+    for i, g in enumerate(giorni_ita):
+        num = conteggi.get(g, 0)
+        with cols_count[i]:
+            # Un box colorato che mostra il totale per quel giorno
+            st.markdown(f"""
+                <div style="background:#f0f2f6; border-radius:10px; padding:10px; text-align:center; border-top: 4px solid #1f77b4;">
+                    <div style="font-size:12px; font-weight:bold; color:#555;">{g[:3].upper()}</div>
+                    <div style="font-size:22px; font-weight:bold; color:#1f77b4;">{num}</div>
+                </div>
+            """, unsafe_allow_html=True)
+    
+    st.divider()
+
+    # --- ELENCO MODIFICA ---
     for m in lista_postazioni:
         add_m = df_mod[(df_mod["Mansione"] == m) & (df_mod["Stato Rapporto"] == "Attivo")]
         if not add_m.empty:
-            st.info(f"Postazione: {m}")
-            for idx, row in add_m.iterrows():
-                c1, c2 = st.columns([3, 1])
-                c1.markdown(f"<div style='padding-top:10px;'>{row['Nome']} <b>{row['Cognome']}</b></div>", unsafe_allow_html=True)
-                df_mod.at[idx, 'GiornoRiposoSettimanale'] = c2.selectbox(f"Riposo", opzioni_riposo, index=opzioni_riposo.index(row['GiornoRiposoSettimanale']) if row['GiornoRiposoSettimanale'] in opzioni_riposo else 7, key=f"rap_{idx}", label_visibility="collapsed")
-            st.divider()
-    if st.button("💾 Salva Tutte le Modifiche", type="primary", use_container_width=True):
-        conn.update(worksheet="Addetti", data=df_mod); st.cache_data.clear(); st.success("Riposi aggiornati!"); st.rerun()
+            with st.expander(f"📍 Postazione: {m}", expanded=True):
+                for idx, row in add_m.iterrows():
+                    c1, c2 = st.columns([3, 1])
+                    c1.markdown(f"<div style='padding-top:10px;'>{row['Nome']} <b>{row['Cognome']}</b></div>", unsafe_allow_html=True)
+                    
+                    # Selezione del riposo
+                    current_val = row['GiornoRiposoSettimanale']
+                    default_idx = opzioni_riposo.index(current_val) if current_val in opzioni_riposo else 7
+                    
+                    new_val = c2.selectbox(
+                        f"Riposo_{idx}", 
+                        opzioni_riposo, 
+                        index=default_idx, 
+                        key=f"rap_sel_{idx}", 
+                        label_visibility="collapsed"
+                    )
+                    df_mod.at[idx, 'GiornoRiposoSettimanale'] = new_val
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    if st.button("💾 SALVA TUTTE LE MODIFICHE", type="primary", use_container_width=True):
+        conn.update(worksheet="Addetti", data=df_mod)
+        st.cache_data.clear()
+        st.success("Tutti i riposi sono stati aggiornati correttamente!")
+        st.rerun()
 
 # --- 4. AREA DISPONIBILITÀ STAFF ---
 elif menu == "📅 Area Disponibilità Staff":
