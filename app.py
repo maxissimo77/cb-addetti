@@ -351,11 +351,10 @@ elif menu == "📅 Area Disponibilità Staff":
             old = data["disp"][~((data["disp"]["Nome"] == row_d['Nome']) & (data["disp"]["Cognome"] == row_d['Cognome']) & (data["disp"]["Data"].astype(str).isin(d_list)))]
             conn.update(worksheet="Disponibilita", data=pd.concat([old, nuovi], ignore_index=True)); st.cache_data.clear(); st.rerun()
 
-# --- 5. GESTIONE ANAGRAFICA (Ripristinata e Potenziata) ---
+# --- 5. GESTIONE ANAGRAFICA (Inclusa Data Cessazione) ---
 elif menu == "👥 Gestione Anagrafica":
     st.title("👥 Anagrafica Personale")
     
-    # --- LOGICA DI EDITING ---
     if "editing_id" not in st.session_state: 
         st.session_state["editing_id"] = None
 
@@ -370,9 +369,11 @@ elif menu == "👥 Gestione Anagrafica":
             estato = c3.selectbox("Stato Rapporto", ["Attivo", "Dimesso", "Licenziato"], 
                                   index=["Attivo", "Dimesso", "Licenziato"].index(row['Stato Rapporto']) if row['Stato Rapporto'] in ["Attivo", "Dimesso", "Licenziato"] else 0)
             
-            c_tel, c_mail = st.columns(2)
+            c_tel, c_mail, c_cess = st.columns(3)
             etel = c_tel.text_input("Cellulare", row['Cellulare'])
             email = c_mail.text_input("Email", row['Email'])
+            # Campo data cessazione: visibile se lo stato non è Attivo
+            e_data_cess = c_cess.text_input("Data Cessazione (gg/mm/aaaa)", row.get('Data Cessazione', ''))
             
             c_man, c_rip = st.columns(2)
             em = c_man.selectbox("Mansione", lista_postazioni, index=lista_postazioni.index(row['Mansione']) if row['Mansione'] in lista_postazioni else 0)
@@ -390,6 +391,7 @@ elif menu == "👥 Gestione Anagrafica":
                 data["addetti"].at[idx, 'Mansione'] = em
                 data["addetti"].at[idx, 'GiornoRiposoSettimanale'] = er
                 data["addetti"].at[idx, 'Contestazioni'] = e_cont
+                data["addetti"].at[idx, 'Data Cessazione'] = e_data_cess
                 conn.update(worksheet="Addetti", data=data["addetti"])
                 st.cache_data.clear()
                 st.session_state["editing_id"] = None
@@ -400,13 +402,10 @@ elif menu == "👥 Gestione Anagrafica":
                 st.rerun()
     
     else:
-        # --- VISUALIZZAZIONE ELENCO ---
         t1, t2 = st.tabs(["📋 Elenco Personale", "➕ Aggiungi Nuovo"])
         
         with t1:
-            # Selezione filtro stato
             filtro_stato = st.radio("Mostra addetti:", ["Solo Attivi", "Tutti"], horizontal=True)
-            
             df_display = data["addetti"].copy()
             if filtro_stato == "Solo Attivi":
                 df_display = df_display[df_display["Stato Rapporto"] == "Attivo"]
@@ -418,23 +417,30 @@ elif menu == "👥 Gestione Anagrafica":
                 with st.container():
                     c1, c2, c3 = st.columns([3, 5, 1])
                     
-                    # Colonna 1: Nome e WhatsApp
                     wa = format_wa_link(r)
                     wa_html = f' <a href="{wa}" target="_blank" style="text-decoration:none;">📲</a>' if wa else ""
-                    c1.markdown(f"**{r['Nome']} {r['Cognome']}**{wa_html}", unsafe_allow_html=True)
+                    
+                    # Colore diverso per il nome se non attivo
+                    nome_style = "color: #333;" if r['Stato Rapporto'] == "Attivo" else "color: #888; text-decoration: line-through;"
+                    c1.markdown(f"<span style='{nome_style} font-weight: bold;'>{r['Nome']} {r['Cognome']}</span>{wa_html}", unsafe_allow_html=True)
                     c1.caption(f"📍 {r['Mansione']}")
                     
-                    # Colonna 2: Dettagli (Email, Cellulare, Contestazioni)
+                    # Dettagli
                     info_text = f"📞 {r['Cellulare']} | 📧 {r['Email'] if r['Email'] else 'Nessuna mail'}"
                     c2.markdown(f"<div style='font-size:0.85rem; color:#555;'>{info_text}</div>", unsafe_allow_html=True)
-                    c2.markdown(f"<div style='font-size:0.85rem;'><b>Riposo:</b> {r['GiornoRiposoSettimanale']} | <b>Stato:</b> {r['Stato Rapporto']}</div>", unsafe_allow_html=True)
                     
-                    # Visualizzazione Contestazioni (se presenti)
+                    # Mostra lo stato e, se presente, la data di cessazione
+                    stato_info = f"<b>Stato:</b> {r['Stato Rapporto']}"
+                    if r['Stato Rapporto'] != "Attivo" and str(r.get('Data Cessazione', '')).strip() != "":
+                        stato_info += f" (dal {r['Data Cessazione']})"
+                    
+                    c2.markdown(f"<div style='font-size:0.85rem;'><b>Riposo:</b> {r['GiornoRiposoSettimanale']} | {stato_info}</div>", unsafe_allow_html=True)
+                    
+                    # Contestazioni
                     if str(r['Contestazioni']).strip() and str(r['Contestazioni']) != "nan":
                         c2.markdown(f"""<div style="background-color:#fff5f5; border-left:3px solid #ff4b4b; padding:5px 10px; margin-top:5px; font-size:0.8rem; color:#c92a2a;">
                                         🚩 <b>Contestazioni:</b> {r['Contestazioni']}</div>""", unsafe_allow_html=True)
                     
-                    # Colonna 3: Tasto Edit
                     if c3.button("✏️", key=f"btn_edit_{idx}"):
                         st.session_state["editing_id"] = idx
                         st.rerun()
@@ -444,13 +450,15 @@ elif menu == "👥 Gestione Anagrafica":
         with t2:
             st.subheader("Inserisci un nuovo collaboratore")
             with st.form("nuovo_addetto"):
-                nc1, nc2 = st.columns(2)
+                nc1, nc2, nc3 = st.columns(3)
                 new_nome = nc1.text_input("Nome")
                 new_cognome = nc2.text_input("Cognome")
-                new_mansione = nc1.selectbox("Mansione", lista_postazioni)
-                new_riposo = nc2.selectbox("Giorno di Riposo", opzioni_riposo)
+                new_mansione = nc3.selectbox("Mansione", lista_postazioni)
+                
                 new_tel = nc1.text_input("Cellulare")
                 new_mail = nc2.text_input("Email")
+                new_riposo = nc3.selectbox("Giorno di Riposo", opzioni_riposo)
+                
                 new_cont = st.text_area("Note / Contestazioni iniziali")
                 
                 if st.form_submit_button("➕ AGGIUNGI COLLABORATORE", use_container_width=True):
