@@ -315,31 +315,62 @@ elif menu == "📅 Riepilogo Riposi Settimanali":
             
             st.markdown("<br>", unsafe_allow_html=True)
 
-        # --- 3. GESTIONE RIPOSI RAPIDA (Con Riepilogo Somme) ---
+       # --- 3. GESTIONE RIPOSI RAPIDA (Conteggi divisi per Mansione) ---
 elif menu == "📝 Gestione Riposi Rapida":
     st.title("📝 Modifica Rapida Riposi")
+    st.info("I box mostrano quanti addetti riposano ogni giorno per la specifica mansione.")
     
     df_mod = data["addetti"].copy()
-    # Consideriamo solo gli attivi per il conteggio e la modifica
-    addetti_attivi = df_mod[df_mod["Stato Rapporto"] == "Attivo"]
+    
+    # Ciclo per ogni mansione
+    for m in lista_postazioni:
+        add_m = df_mod[(df_mod["Mansione"] == m) & (df_mod["Stato Rapporto"] == "Attivo")]
+        
+        if not add_m.empty:
+            st.markdown(f"### 📍 {m}")
+            
+            # --- CONTEGGI SPECIFICI PER QUESTA MANSIONE ---
+            conteggi_m = add_m["GiornoRiposoSettimanale"].value_counts()
+            
+            c_counts = st.columns(7)
+            for i, g in enumerate(giorni_ita):
+                num = conteggi_m.get(g, 0)
+                # Cambia colore se il numero è alto (alert visivo opzionale)
+                border_col = "#1f77b4" if num < 3 else "#ff4b4b" 
+                
+                with c_counts[i]:
+                    st.markdown(f"""
+                        <div style="background:white; border:1px solid #eee; border-radius:8px; padding:8px; text-align:center; border-bottom: 3px solid {border_col};">
+                            <div style="font-size:10px; font-weight:bold; color:#888; text-transform:uppercase;">{g[:3]}</div>
+                            <div style="font-size:18px; font-weight:bold; color:{border_col};">{num}</div>
+                        </div>
+                    """, unsafe_allow_html=True)
+            
+            # --- ELENCO DIPENDENTI MANSIONE ---
+            with st.container():
+                # Spazio extra per staccare dai box
+                st.markdown("<div style='margin-top:10px;'></div>", unsafe_allow_html=True)
+                for idx, row in add_m.iterrows():
+                    col_nome, col_sel = st.columns([3, 1])
+                    col_nome.markdown(f"<div style='padding-top:8px; font-size:0.95rem;'>{row['Nome']} <b>{row['Cognome']}</b></div>", unsafe_allow_html=True)
+                    
+                    # Selettore riposo
+                    curr_val = row['GiornoRiposoSettimanale']
+                    df_mod.at[idx, 'GiornoRiposoSettimanale'] = col_sel.selectbox(
+                        f"Rip_{idx}", 
+                        opzioni_riposo, 
+                        index=opzioni_riposo.index(curr_val) if curr_val in opzioni_riposo else 7,
+                        key=f"fast_edit_{idx}",
+                        label_visibility="collapsed"
+                    )
+            st.divider()
 
-    # --- RIGA RIEPILOGO SOMME ---
-    st.markdown("##### 📊 Riepilogo Riposi Settimanali (Totale Addetti)")
-    conteggi = addetti_attivi["GiornoRiposoSettimanale"].value_counts()
-    
-    cols_count = st.columns(7)
-    for i, g in enumerate(giorni_ita):
-        num = conteggi.get(g, 0)
-        with cols_count[i]:
-            # Un box colorato che mostra il totale per quel giorno
-            st.markdown(f"""
-                <div style="background:#f0f2f6; border-radius:10px; padding:10px; text-align:center; border-top: 4px solid #1f77b4;">
-                    <div style="font-size:12px; font-weight:bold; color:#555;">{g[:3].upper()}</div>
-                    <div style="font-size:22px; font-weight:bold; color:#1f77b4;">{num}</div>
-                </div>
-            """, unsafe_allow_html=True)
-    
-    st.divider()
+    st.markdown("<br>", unsafe_allow_html=True)
+    if st.button("💾 SALVA TUTTE LE MODIFICHE", type="primary", use_container_width=True):
+        conn.update(worksheet="Addetti", data=df_mod)
+        st.cache_data.clear()
+        st.success("Modifiche salvate con successo!")
+        st.rerun()
 
     # --- ELENCO MODIFICA ---
     for m in lista_postazioni:
