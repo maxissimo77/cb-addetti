@@ -270,7 +270,9 @@ if menu == "📊 Dashboard":
                         c = "#29b05c" if n >= r and r > 0 else "#ff4b4b" if n < r else "#808080"
                         st.markdown(genera_card(m, c, n, r, s_p), unsafe_allow_html=True)
 
-st.title("📅 Piano Riposi Settimanali")
+# --- 2. RIEPILOGO RIPOSI (Layout Corretto e Senza Errori) ---
+elif menu == "📅 Riepilogo Riposi Settimanali":
+    st.title("📅 Piano Riposi Settimanali")
     
     for m in lista_postazioni:
         # Recupero addetti attivi per mansione
