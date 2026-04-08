@@ -214,7 +214,7 @@ if st.sidebar.button("Logout"):
     for key in list(st.session_state.keys()): del st.session_state[key]
     st.rerun()
 
-# --- 1. DASHBOARD (Con Grafici di Copertura) ---
+# --- 1. DASHBOARD (Versione Pulita con Radio sotto Bagnini) ---
 if menu == "📊 Dashboard":
     st.title("📍 Stato Occupazione Parco")
     input_d = st.date_input("Inizio visualizzazione (settimana):", default_date)
@@ -224,7 +224,6 @@ if menu == "📊 Dashboard":
     if not date_aperte:
         st.warning(f"⚠️ Parco CHIUSO nel periodo selezionato.")
     else:
-        # Funzioni di utility interne
         def to_date_only(val):
             try: return pd.to_datetime(val).date()
             except: return None
@@ -251,9 +250,10 @@ if menu == "📊 Dashboard":
                 d_tab = date_aperte[idx]
                 giorno_sett_oggi = norm(giorni_ita[d_tab.weekday()])
                 
-                # Preparazione Dati
+                # Calcolo Fabbisogno e Disponibilità
                 df_f = data["fabbisogno"].copy(); df_f['d_pure'] = df_f['Data'].apply(to_date_only)
                 fabb_oggi = df_f[df_f['d_pure'] == d_tab]
+                
                 df_dis = data["disp"].copy(); df_dis['d_pure'] = df_dis['Data'].apply(to_date_only)
                 disp_oggi = df_dis[df_dis['d_pure'] == d_tab]
                 disp_oggi["Stato_Norm"] = disp_oggi["Stato"].apply(norm)
@@ -264,54 +264,38 @@ if menu == "📊 Dashboard":
                 staff_base["RIPOSO_NORM"] = staff_base["GiornoRiposoSettimanale"].apply(norm)
                 presenti_effettivi = staff_base[(staff_base["RIPOSO_NORM"] != giorno_sett_oggi) & (~staff_base["ID_UNICO"].isin(lista_nera_nomi))]
 
+                # Layout a 3 Colonne
                 col1, col2, col3 = st.columns(3)
                 
                 # Colonna 1: Addetto Attrazioni
                 with col1:
                     m = "Addetto Attrazioni"
                     s_p = presenti_effettivi[presenti_effettivi["Mansione"].apply(norm) == norm(m)]
-                    f_r = fabb_oggi[fabb_oggi["Mansione"].apply(norm) == norm(m)]; r = int(f_r["Quantita"].iloc[0]) if not f_r.empty else 0; n = len(s_p)
+                    f_r = fabb_oggi[fabb_oggi["Mansione"].apply(norm) == norm(m)]
+                    r = int(f_r["Quantita"].iloc[0]) if not f_r.empty else 0
+                    n = len(s_p)
                     c = "#29b05c" if n >= r and r > 0 else "#ff4b4b" if n < r else "#808080"
                     st.markdown(genera_card(m, c, n, r, s_p), unsafe_allow_html=True)
 
-                # Colonna 2: Assistente Bagnanti + Radio
+                # Colonna 2: Assistente Bagnanti E Radio SOTTO
                 with col2:
                     for m in ["Assistente Bagnanti", "Radio"]:
                         s_p = presenti_effettivi[presenti_effettivi["Mansione"].apply(norm) == norm(m)]
-                        f_r = fabb_oggi[fabb_oggi["Mansione"].apply(norm) == norm(m)]; r = int(f_r["Quantita"].iloc[0]) if not f_r.empty else 0; n = len(s_p)
+                        f_r = fabb_oggi[fabb_oggi["Mansione"].apply(norm) == norm(m)]
+                        r = int(f_r["Quantita"].iloc[0]) if not f_r.empty else 0
+                        n = len(s_p)
                         c = "#29b05c" if n >= r and r > 0 else "#ff4b4b" if n < r else "#808080"
                         st.markdown(genera_card(m, c, n, r, s_p), unsafe_allow_html=True)
 
-                # Colonna 3: Bungee Jumping + GRAFICI DI COPERTURA
+                # Colonna 3: Bungee Jumping
                 with col3:
-                    m_bj = "Bungee Jumping"
-                    s_p_bj = presenti_effettivi[presenti_effettivi["Mansione"].apply(norm) == norm(m_bj)]
-                    f_r_bj = fabb_oggi[fabb_oggi["Mansione"].apply(norm) == norm(m_bj)]; r_bj = int(f_r_bj["Quantita"].iloc[0]) if not f_r_bj.empty else 0; n_bj = len(s_p_bj)
-                    c_bj = "#29b05c" if n_bj >= r_bj and r_bj > 0 else "#ff4b4b" if n_bj < r_bj else "#808080"
-                    st.markdown(genera_card(m_bj, c_bj, n_bj, r_bj, s_p_bj), unsafe_allow_html=True)
-                    
-                    # --- BOX GRAFICI PERCENTUALI ---
-                    st.markdown("""<div style='background:white; border:1px solid #e0e0e0; border-radius:12px; padding:15px; margin-top:10px;'>
-                        <h4 style='text-align:center; color:#333; margin-bottom:15px; font-size:1rem;'>📊 Copertura Fabbisogno</h4>
-                    """, unsafe_allow_html=True)
-                    
-                    # Calcolo percentuali per le 4 mansioni principali
-                    mansioni_plot = ["Addetto Attrazioni", "Assistente Bagnanti", "Bungee Jumping", "Radio"]
-                    for mp in mansioni_plot:
-                        s_p_mp = presenti_effettivi[presenti_effettivi["Mansione"].apply(norm) == norm(mp)]
-                        f_r_mp = fabb_oggi[fabb_oggi["Mansione"].apply(norm) == norm(mp)]
-                        req_mp = int(f_r_mp["Quantita"].iloc[0]) if not f_r_mp.empty else 0
-                        
-                        if req_mp > 0:
-                            perc = min(int((len(s_p_mp) / req_mp) * 100), 100)
-                            color_perc = "#29b05c" if perc >= 100 else "#ffa500" if perc >= 70 else "#ff4b4b"
-                            
-                            st.write(f"**{mp}** ({perc}%)")
-                            st.progress(perc / 100) # Barra di progresso come alternativa pulita al grafico circolare (più leggibile in colonna stretta)
-                        else:
-                            st.caption(f"{mp}: Fabbisogno non impostato")
-                    
-                    st.markdown("</div>", unsafe_allow_html=True)
+                    m = "Bungee Jumping"
+                    s_p = presenti_effettivi[presenti_effettivi["Mansione"].apply(norm) == norm(m)]
+                    f_r = fabb_oggi[fabb_oggi["Mansione"].apply(norm) == norm(m)]
+                    r = int(f_r["Quantita"].iloc[0]) if not f_r.empty else 0
+                    n = len(s_p)
+                    c = "#29b05c" if n >= r and r > 0 else "#ff4b4b" if n < r else "#808080"
+                    st.markdown(genera_card(m, c, n, r, s_p), unsafe_allow_html=True)
 # --- 2. RIEPILOGO RIPOSI (Layout Corretto e Senza Errori) ---
 elif menu == "📅 Riepilogo Riposi Settimanali":
     st.title("📅 Piano Riposi Settimanali")
