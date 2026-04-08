@@ -270,11 +270,10 @@ if menu == "📊 Dashboard":
                         c = "#29b05c" if n >= r and r > 0 else "#ff4b4b" if n < r else "#808080"
                         st.markdown(genera_card(m, c, n, r, s_p), unsafe_allow_html=True)
 
-# --- 2. RIEPILOGO RIPOSI (Layout con Non Definiti SOTTO) ---
-elif menu == "📅 Riepilogo Riposi Settimanali":
-    st.title("📅 Piano Riposi Settimanali")
+st.title("📅 Piano Riposi Settimanali")
     
     for m in lista_postazioni:
+        # Recupero addetti attivi per mansione
         add_m = data["addetti"][(data["addetti"]["Mansione"] == m) & (data["addetti"]["Stato Rapporto"] == "Attivo")]
         
         if not add_m.empty:
@@ -284,7 +283,7 @@ elif menu == "📅 Riepilogo Riposi Settimanali":
             with col_pdf:
                 st.download_button("📄 PDF", genera_pdf_riposi(m, add_m, giorni_ita), f"Riposi_{m}.pdf", "application/pdf", key=f"pdf_{m}")
             
-            # --- BOX PRINCIPALE (Lunedì -> Domenica) ---
+            # --- BOX 1: SETTIMANA (LUN-DOM) ---
             with st.container(border=True):
                 cols = st.columns(7)
                 for i, g in enumerate(giorni_ita):
@@ -295,18 +294,22 @@ elif menu == "📅 Riepilogo Riposi Settimanali":
                             </div>
                         """, unsafe_allow_html=True)
                         
-                        persone = add_m[add_m["GiornoRiposoSettimanale"] == g]
-                        for _, r in persone.iterrows():
-                            st.markdown(f'<div class="name-badge" style="text-align:center; border-left:none; background:#f8f9fa; font-size:11px;">{r["Nome"]} {r["Cognome"]}</div>', unsafe_allow_html=True)
+                        # Filtro persone per il giorno specifico
+                        persone_giorno = add_m[add_m["GiornoRiposoSettimanale"] == g]
+                        for _, r in persone_giorno.iterrows():
+                            st.markdown(f'<div class="name-badge" style="text-align:center; border-left:none; background:#f8f9fa; font-size:11px; margin-bottom:4px;">{r["Nome"]} {r["Cognome"]}</div>', unsafe_allow_html=True)
 
-            # --- BOX SEPARATO PER NON DEFINITI (SOTTO) ---
+            # --- BOX 2: NON DEFINITI (SOTTO) ---
             non_def = add_m[add_m["GiornoRiposoSettimanale"] == "Non Definito"]
             if not non_def.empty:
-                st.markdown("<p style='margin-bottom:-10px; margin-top:10px; font-weight:bold; color:#666; font-size:0.9rem;'>Senza riposo assegnato:</p>", unsafe_allow_html=True)
+                st.markdown("<p style='margin-bottom:5px; margin-top:10px; font-weight:bold; color:#666; font-size:0.9rem;'>Senza riposo assegnato:</p>", unsafe_allow_html=True)
                 with st.container(border=True):
-                    # Mostriamo i nomi in riga (flex-wrap) per non occupare troppo spazio verticale
-                    nomi_nd = "".join([f'<span class="name-badge" style="display:inline-block; margin-right:8px; border-left:4px solid #6c757d;">{r["Nome"]} {r["Cognome"]}</span>' for _, r in non_def.iterrows()])
-                    st.markdown(f'<div style="display:flex; flex-wrap:wrap;">{nomi_nd}</div>', unsafe_allow_html=True)
+                    # Creiamo una riga di badge per i non definiti
+                    badge_nd_html = ""
+                    for _, r in non_def.iterrows():
+                        badge_nd_html += f'<span class="name-badge" style="display:inline-block; margin-right:8px; border-left:4px solid #6c757d; padding: 4px 10px;">{r["Nome"]} {r["Cognome"]}</span>'
+                    
+                    st.markdown(f'<div style="display:flex; flex-wrap:wrap; gap:5px;">{badge_nd_html}</div>', unsafe_allow_html=True)
             
             st.markdown("<br>", unsafe_allow_html=True)
 
