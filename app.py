@@ -315,16 +315,7 @@ elif menu == "📅 Riepilogo Riposi Settimanali":
             
             st.markdown("<br>", unsafe_allow_html=True)
 
-            # 3. RENDERIZZIAMO TUTTO (Assicurati che questa parte sia identica)
-            st.markdown(f"""
-                <div style="border: 1px solid #ddd; border-radius: 12px; background: white; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 30px;">
-                    <div style="display: flex; flex-direction: row; justify-content: flex-start; align-items: flex-start;">
-                        {html_giorni}
-                    </div>
-                </div>
-            """, unsafe_allow_html=True)
-
-# --- 3. GESTIONE RIPOSI RAPIDA ---
+          # --- 3. GESTIONE RIPOSI RAPIDA ---
 elif menu == "📝 Gestione Riposi Rapida":
     st.title("📝 Modifica Rapida Riposi")
     df_mod = data["addetti"].copy()
