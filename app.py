@@ -446,13 +446,50 @@ elif menu == "👥 Gestione Anagrafica":
         t1, t2 = st.tabs(["📋 Elenco Personale", "➕ Aggiungi Nuovo"])
         
         with t1:
-            filtro_stato = st.radio("Mostra addetti:", ["Solo Attivi", "Tutti"], horizontal=True)
+            # --- NUOVA RIGA FILTRI ---
+            col_f1, col_f2 = st.columns([1, 1])
+            with col_f1:
+                filtro_stato = st.radio("Stato:", ["Solo Attivi", "Tutti"], horizontal=True)
+            with col_f2:
+                # Aggiungiamo "Tutte" come opzione predefinita per il filtro mansione
+                opzioni_filtro_man = ["Tutte"] + lista_postazioni
+                filtro_man = st.selectbox("Filtra per Mansione:", opzioni_filtro_man)
+
             df_display = data["addetti"].copy()
+            
+            # Applicazione Filtro Stato
             if filtro_stato == "Solo Attivi":
                 df_display = df_display[df_display["Stato Rapporto"] == "Attivo"]
             
-            st.markdown(f"**Totale visualizzati: {len(df_display)}**")
+            # Applicazione Filtro Mansione
+            if filtro_man != "Tutte":
+                df_display = df_display[df_display["Mansione"] == filtro_man]
+            
+            st.markdown(f"**Risultati trovati: {len(df_display)}**")
             st.divider()
+
+            for idx, r in df_display.iterrows():
+                # ... (il resto del codice dell'elenco rimane identico a quello che hai già)
+                with st.container():
+                    c1, c2, c3 = st.columns([3, 5, 1])
+                    wa = format_wa_link(r)
+                    wa_html = f' <a href="{wa}" target="_blank" style="text-decoration:none;">📲</a>' if wa else ""
+                    nome_style = "color: #333;" if r['Stato Rapporto'] == "Attivo" else "color: #888; text-decoration: line-through;"
+                    c1.markdown(f"<span style='{nome_style} font-weight: bold;'>{r['Nome']} {r['Cognome']}</span>{wa_html}", unsafe_allow_html=True)
+                    c1.caption(f"📍 {r['Mansione']}")
+                    info_text = f"📞 {r['Cellulare']} | 📧 {r['Email'] if r['Email'] else 'Nessuna mail'}"
+                    c2.markdown(f"<div style='font-size:0.85rem; color:#555;'>{info_text}</div>", unsafe_allow_html=True)
+                    stato_info = f"<b>Stato:</b> {r['Stato Rapporto']}"
+                    if r['Stato Rapporto'] != "Attivo" and str(r.get('Data Cessazione', '')).strip() != "":
+                        stato_info += f" (dal {r['Data Cessazione']})"
+                    c2.markdown(f"<div style='font-size:0.85rem;'><b>Riposo:</b> {r['GiornoRiposoSettimanale']} | {stato_info}</div>", unsafe_allow_html=True)
+                    if str(r['Contestazioni']).strip() and str(r['Contestazioni']) != "nan":
+                        c2.markdown(f"""<div style="background-color:#fff5f5; border-left:3px solid #ff4b4b; padding:5px 10px; margin-top:5px; font-size:0.8rem; color:#c92a2a;">
+                                    🚩 <b>Contestazioni:</b> {r['Contestazioni']}</div>""", unsafe_allow_html=True)
+                    if c3.button("✏️", key=f"btn_edit_{idx}"):
+                        st.session_state["editing_id"] = idx
+                        st.rerun()
+                    st.divider()
 
             for idx, r in df_display.iterrows():
                 with st.container():
