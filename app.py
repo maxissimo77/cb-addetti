@@ -351,43 +351,123 @@ elif menu == "📅 Area Disponibilità Staff":
             old = data["disp"][~((data["disp"]["Nome"] == row_d['Nome']) & (data["disp"]["Cognome"] == row_d['Cognome']) & (data["disp"]["Data"].astype(str).isin(d_list)))]
             conn.update(worksheet="Disponibilita", data=pd.concat([old, nuovi], ignore_index=True)); st.cache_data.clear(); st.rerun()
 
-# --- 5. GESTIONE ANAGRAFICA ---
+# --- 5. GESTIONE ANAGRAFICA (Ripristinata e Potenziata) ---
 elif menu == "👥 Gestione Anagrafica":
     st.title("👥 Anagrafica Personale")
-    if "editing_id" not in st.session_state: st.session_state["editing_id"] = None
+    
+    # --- LOGICA DI EDITING ---
+    if "editing_id" not in st.session_state: 
+        st.session_state["editing_id"] = None
+
     if st.session_state["editing_id"] is not None:
-        idx = st.session_state["editing_id"]; row = data["addetti"].loc[idx]
-        with st.form("edit"):
-            st.subheader(f"Modifica: {row['Nome']} {row['Cognome']}")
-            c1, c2, c3 = st.columns(3); en = c1.text_input("Nome", row['Nome']); ec = c2.text_input("Cognome", row['Cognome']); estato = c3.selectbox("Stato", ["Attivo", "Dimesso", "Licenziato"], index=0)
-            c_tel, c_mail = st.columns(2); etel = c_tel.text_input("Cellulare", row['Cellulare']); email = c_mail.text_input("Email", row['Email'])
-            c1, c2 = st.columns(2); em = c1.selectbox("Mansione", lista_postazioni, index=0); er = c2.selectbox("Riposo", opzioni_riposo, index=0)
-            e_cont = st.text_area("Lettere di Contestazione", row['Contestazioni'])
-            if st.form_submit_button("💾 Salva"):
-                data["addetti"].at[idx, 'Nome'] = en; data["addetti"].at[idx, 'Cognome'] = ec; data["addetti"].at[idx, 'Stato Rapporto'] = estato
-                data["addetti"].at[idx, 'Cellulare'] = etel; data["addetti"].at[idx, 'Email'] = email
-                data["addetti"].at[idx, 'Mansione'] = em; data["addetti"].at[idx, 'GiornoRiposoSettimanale'] = er; data["addetti"].at[idx, 'Contestazioni'] = e_cont
-                conn.update(worksheet="Addetti", data=data["addetti"]); st.cache_data.clear(); st.session_state["editing_id"] = None; st.rerun()
-            if st.form_submit_button("❌ Annulla"): st.session_state["editing_id"] = None; st.rerun()
+        idx = st.session_state["editing_id"]
+        row = data["addetti"].loc[idx]
+        with st.form("edit_form"):
+            st.subheader(f"Modifica Profilo: {row['Nome']} {row['Cognome']}")
+            c1, c2, c3 = st.columns(3)
+            en = c1.text_input("Nome", row['Nome'])
+            ec = c2.text_input("Cognome", row['Cognome'])
+            estato = c3.selectbox("Stato Rapporto", ["Attivo", "Dimesso", "Licenziato"], 
+                                  index=["Attivo", "Dimesso", "Licenziato"].index(row['Stato Rapporto']) if row['Stato Rapporto'] in ["Attivo", "Dimesso", "Licenziato"] else 0)
+            
+            c_tel, c_mail = st.columns(2)
+            etel = c_tel.text_input("Cellulare", row['Cellulare'])
+            email = c_mail.text_input("Email", row['Email'])
+            
+            c_man, c_rip = st.columns(2)
+            em = c_man.selectbox("Mansione", lista_postazioni, index=lista_postazioni.index(row['Mansione']) if row['Mansione'] in lista_postazioni else 0)
+            er = c_rip.selectbox("Riposo Settimanale", opzioni_riposo, index=opzioni_riposo.index(row['GiornoRiposoSettimanale']) if row['GiornoRiposoSettimanale'] in opzioni_riposo else 0)
+            
+            e_cont = st.text_area("Lettere di Contestazione / Note", row['Contestazioni'])
+            
+            cb1, cb2 = st.columns(2)
+            if cb1.form_submit_button("💾 SALVA MODIFICHE", use_container_width=True):
+                data["addetti"].at[idx, 'Nome'] = en
+                data["addetti"].at[idx, 'Cognome'] = ec
+                data["addetti"].at[idx, 'Stato Rapporto'] = estato
+                data["addetti"].at[idx, 'Cellulare'] = etel
+                data["addetti"].at[idx, 'Email'] = email
+                data["addetti"].at[idx, 'Mansione'] = em
+                data["addetti"].at[idx, 'GiornoRiposoSettimanale'] = er
+                data["addetti"].at[idx, 'Contestazioni'] = e_cont
+                conn.update(worksheet="Addetti", data=data["addetti"])
+                st.cache_data.clear()
+                st.session_state["editing_id"] = None
+                st.success("Dati aggiornati correttamente!")
+                st.rerun()
+            if cb2.form_submit_button("❌ ANNULLA", use_container_width=True):
+                st.session_state["editing_id"] = None
+                st.rerun()
+    
     else:
-        t1, t2 = st.tabs(["📋 Elenco Staff", "➕ Nuovo Addetto"])
+        # --- VISUALIZZAZIONE ELENCO ---
+        t1, t2 = st.tabs(["📋 Elenco Personale", "➕ Aggiungi Nuovo"])
+        
         with t1:
-            for idx, r in data["addetti"][data["addetti"]["Stato Rapporto"] == "Attivo"].iterrows():
+            # Selezione filtro stato
+            filtro_stato = st.radio("Mostra addetti:", ["Solo Attivi", "Tutti"], horizontal=True)
+            
+            df_display = data["addetti"].copy()
+            if filtro_stato == "Solo Attivi":
+                df_display = df_display[df_display["Stato Rapporto"] == "Attivo"]
+            
+            st.markdown(f"**Totale visualizzati: {len(df_display)}**")
+            st.divider()
+
+            for idx, r in df_display.iterrows():
                 with st.container():
-                    c1, c2, c3 = st.columns([3, 4, 1])
-                    wa = format_wa_link(r); wa_icon = f' <a href="{wa}" target="_blank" style="text-decoration:none;">📲</a>' if wa else ""
-                    c1.markdown(f"**{r['Nome']} {r['Cognome']}**{wa_icon}", unsafe_allow_html=True)
-                    c2.caption(f"{r['Mansione']} | Riposo: {r['GiornoRiposoSettimanale']} | 📞 {r['Cellulare']}")
-                    if c3.button("✏️", key=f"ed_{idx}"): st.session_state["editing_id"] = idx; st.rerun()
+                    c1, c2, c3 = st.columns([3, 5, 1])
+                    
+                    # Colonna 1: Nome e WhatsApp
+                    wa = format_wa_link(r)
+                    wa_html = f' <a href="{wa}" target="_blank" style="text-decoration:none;">📲</a>' if wa else ""
+                    c1.markdown(f"**{r['Nome']} {r['Cognome']}**{wa_html}", unsafe_allow_html=True)
+                    c1.caption(f"📍 {r['Mansione']}")
+                    
+                    # Colonna 2: Dettagli (Email, Cellulare, Contestazioni)
+                    info_text = f"📞 {r['Cellulare']} | 📧 {r['Email'] if r['Email'] else 'Nessuna mail'}"
+                    c2.markdown(f"<div style='font-size:0.85rem; color:#555;'>{info_text}</div>", unsafe_allow_html=True)
+                    c2.markdown(f"<div style='font-size:0.85rem;'><b>Riposo:</b> {r['GiornoRiposoSettimanale']} | <b>Stato:</b> {r['Stato Rapporto']}</div>", unsafe_allow_html=True)
+                    
+                    # Visualizzazione Contestazioni (se presenti)
+                    if str(r['Contestazioni']).strip() and str(r['Contestazioni']) != "nan":
+                        c2.markdown(f"""<div style="background-color:#fff5f5; border-left:3px solid #ff4b4b; padding:5px 10px; margin-top:5px; font-size:0.8rem; color:#c92a2a;">
+                                        🚩 <b>Contestazioni:</b> {r['Contestazioni']}</div>""", unsafe_allow_html=True)
+                    
+                    # Colonna 3: Tasto Edit
+                    if c3.button("✏️", key=f"btn_edit_{idx}"):
+                        st.session_state["editing_id"] = idx
+                        st.rerun()
+                    
                     st.divider()
+
         with t2:
-            with st.form("nuovo"):
-                c1, c2 = st.columns(2); nn, nc = c1.text_input("Nome"), c2.text_input("Cognome")
-                nm, nr = c1.selectbox("Mansione", lista_postazioni), c2.selectbox("Riposo", opzioni_riposo)
-                ntel, nmail = c1.text_input("Cellulare"), c2.text_input("Email")
-                if st.form_submit_button("Aggiungi"):
-                    new = pd.DataFrame([{"Nome":nn, "Cognome":nc, "Mansione":nm, "GiornoRiposoSettimanale":nr, "Stato Rapporto": "Attivo", "Cellulare": ntel, "Email": nmail}])
-                    conn.update(worksheet="Addetti", data=pd.concat([data["addetti"], new], ignore_index=True)); st.cache_data.clear(); st.rerun()
+            st.subheader("Inserisci un nuovo collaboratore")
+            with st.form("nuovo_addetto"):
+                nc1, nc2 = st.columns(2)
+                new_nome = nc1.text_input("Nome")
+                new_cognome = nc2.text_input("Cognome")
+                new_mansione = nc1.selectbox("Mansione", lista_postazioni)
+                new_riposo = nc2.selectbox("Giorno di Riposo", opzioni_riposo)
+                new_tel = nc1.text_input("Cellulare")
+                new_mail = nc2.text_input("Email")
+                new_cont = st.text_area("Note / Contestazioni iniziali")
+                
+                if st.form_submit_button("➕ AGGIUNGI COLLABORATORE", use_container_width=True):
+                    if new_nome and new_cognome:
+                        new_data = pd.DataFrame([{
+                            "Nome": new_nome, "Cognome": new_cognome, 
+                            "Mansione": new_mansione, "GiornoRiposoSettimanale": new_riposo,
+                            "Contestazioni": new_cont, "Stato Rapporto": "Attivo",
+                            "Data Cessazione": "", "Cellulare": new_tel, "Email": new_mail
+                        }])
+                        updated_df = pd.concat([data["addetti"], new_data], ignore_index=True)
+                        conn.update(worksheet="Addetti", data=updated_df)
+                        st.cache_data.clear()
+                        st.success(f"{new_nome} aggiunto con successo!")
+                        st.rerun()
+                    else:
+                        st.error("Nome e Cognome sono obbligatori!")
 
 # --- 6. PIANIFICA FABBISOGNO ---
 elif menu == "⚙️ Pianifica Fabbisogno":
