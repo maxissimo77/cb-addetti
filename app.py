@@ -6,7 +6,7 @@ import calendar
 import urllib.parse
 from io import BytesIO
 
-# --- LIBRERIE PER PDF (Originali dal tuo codice) ---
+# --- LIBRERIE PER PDF (Originali) ---
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
@@ -20,23 +20,23 @@ st.set_page_config(
 )
 pd.options.mode.string_storage = "python"
 
-# --- CUSTOM CSS PER GRAFICA ACCATTIVANTE ---
+# --- CSS PERSONALIZZATO PER GRAFICA ACCATTIVANTE ---
 st.markdown("""
 <style>
     /* Sfondo e font generale */
     .main { background-color: #f8f9fa; }
     
     /* Card moderne per la Dashboard */
-    .stCard {
-        background-color: white;
-        padding: 20px;
-        border-radius: 15px;
+    .card-container {
+        border: 1px solid #e0e0e0;
+        border-radius: 12px;
+        background: white;
+        margin-bottom: 20px;
         box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-        border: 1px solid #eee;
         transition: transform 0.2s;
     }
-    .stCard:hover {
-        transform: translateY(-5px);
+    .card-container:hover {
+        transform: translateY(-3px);
         box-shadow: 0 8px 15px rgba(0,0,0,0.1);
     }
     
@@ -44,26 +44,27 @@ st.markdown("""
     .name-badge {
         background: #f1f3f5;
         color: #212529;
-        padding: 6px 12px;
-        border-radius: 20px;
-        font-size: 0.9rem;
+        padding: 5px 12px;
+        border-radius: 15px;
+        font-size: 0.85rem;
         font-weight: 500;
-        margin: 4px 0;
+        margin: 3px 0;
         border-left: 4px solid #1f77b4;
+        display: block;
     }
 
-    /* Stile pulsanti sidebar */
-    .stRadio [data-testid="stWidgetLabel"] { font-weight: bold; color: #1f77b4; }
-    
-    /* Header sezioni */
-    h1, h2, h3 { color: #0e314d; font-family: 'Inter', sans-serif; }
+    /* Pulsanti Sidebar */
+    section[data-testid="stSidebar"] {
+        background-color: #ffffff;
+        border-right: 1px solid #eee;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 # --- CONNESSIONE ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# --- CARICAMENTO DATI ---
+# --- CARICAMENTO DATI (Logica Originale) ---
 @st.cache_data(ttl=60)
 def get_all_data():
     try:
@@ -86,7 +87,7 @@ def get_all_data():
         else: res["addetti"]["Email"] = res["addetti"]["Email"].astype(str).replace(['nan', 'None', '<NA>'], '')
         return res
     except Exception as e:
-        st.error(f"⚠️ Errore di connessione API: {e}"); st.stop()
+        st.error(f"⚠️ Errore di connessione: {e}"); st.stop()
 
 data = get_all_data()
 
@@ -205,95 +206,121 @@ def genera_mini_calendario(df_persona, riposo_fisso, anno, mese):
 
 # --- SIDEBAR ---
 st.sidebar.image("https://www.caribebay.it/sites/default/files/caribebay-logo.png", width=200)
-st.sidebar.markdown("---")
-menu_options = ["📊 Dashboard", "📅 Riepilogo Riposi"]
+menu_options = ["📊 Dashboard", "📅 Riepilogo Riposi Settimanali"]
 if st.session_state["role"] == "Admin":
-    menu_options += ["📝 Gestione Rapida", "📅 Disponibilità Staff", "⚙️ Fabbisogno", "👥 Anagrafica", "🚩 Postazioni", "⚙️ Impostazioni", "🔑 Password"]
-
+    menu_options += ["📝 Gestione Riposi Rapida", "📅 Area Disponibilità Staff", "⚙️ Pianifica Fabbisogno", "👥 Gestione Anagrafica", "🚩 Gestione Postazioni", "⚙️ Impostazioni Stagione", "🔑 Gestione Password"]
 menu = st.sidebar.radio("NAVIGAZIONE", menu_options)
-st.sidebar.markdown("---")
-if st.sidebar.button("🚪 Logout", use_container_width=True):
+if st.sidebar.button("Logout"):
     for key in list(st.session_state.keys()): del st.session_state[key]
     st.rerun()
 
-# --- 1. DASHBOARD ---
+# --- 1. DASHBOARD (Logica Originale + Card Moderne) ---
 if menu == "📊 Dashboard":
-    st.title("🚀 Stato Occupazione Parco")
-    input_d = st.date_input("Seleziona la settimana di inizio:", default_date)
-    date_aperte = [input_d + timedelta(days=i) for i in range(7) if data_apertura <= (input_d + timedelta(days=i)) <= data_chiusura]
+    st.title("📍 Stato Occupazione Parco")
+    input_d = st.date_input("Inizio visualizzazione (settimana):", default_date)
+    date_range = [input_d + timedelta(days=i) for i in range(7)]
+    date_aperte = [d for d in date_range if data_apertura <= d <= data_chiusura]
     
-    if not date_aperte: st.warning("⚠️ Parco CHIUSO nel periodo selezionato.")
+    if not date_aperte:
+        st.warning(f"⚠️ Parco CHIUSO nel periodo selezionato.")
     else:
-        def norm(s): return str(s).strip().upper() if pd.notna(s) else ""
+        def to_date_only(val):
+            try: return pd.to_datetime(val).date()
+            except: return None
+        def norm(s):
+            if pd.isna(s): return ""
+            return str(s).strip().upper()
+            
         def genera_card(titolo, color, num, req, staff_list):
             nomi_html = "".join([f"<div class='name-badge'>• {r['Nome']} {r['Cognome']}</div>" for _, r in staff_list.iterrows()])
-            if not nomi_html: nomi_html = "<div style='color:gray; font-size:12px; font-style:italic;'>Nessuno presente</div>"
-            return f"""<div class="stCard"><div style="background:{color}; color:white; padding:10px; border-radius:10px; text-align:center; font-weight:bold; margin-bottom:15px;">{titolo.upper()}</div><div style="text-align:center;"><span style="font-size:28px; font-weight:bold;">{num}</span> / <span style="font-size:18px; color:#666;">{req}</span></div><hr style="margin:15px 0;">{nomi_html}</div>"""
+            if not nomi_html: nomi_html = "<div style='color:gray; font-size:12px; font-style:italic; padding:10px;'>Nessuno disponibile</div>"
+            return f"""
+                <div class="card-container">
+                    <div style="background: {color}; color: white; padding: 10px; border-radius: 12px 12px 0 0; text-align: center; font-weight: bold; font-size: 0.9rem;">{titolo.upper()}</div>
+                    <div style="padding: 15px; text-align: center;">
+                        <div style="font-size: 26px; font-weight: bold; color:#333;">{num} <span style="font-size:16px; color:#999;">/ {req}</span></div>
+                        <div style="margin-top: 10px; text-align: left; border-top: 1px solid #f0f0f0; padding-top: 10px;">{nomi_html}</div>
+                    </div>
+                </div>
+            """
 
         tabs = st.tabs([d.strftime("%A %d/%m") for d in date_aperte])
         for idx, t in enumerate(tabs):
             with t:
-                d_tab = date_aperte[idx]; giorno_sett_oggi = norm(giorni_ita[d_tab.weekday()])
-                fabb_oggi = data["fabbisogno"][pd.to_datetime(data["fabbisogno"]['Data']).dt.date == d_tab]
-                disp_oggi = data["disp"][pd.to_datetime(data["disp"]['Data']).dt.date == d_tab]
-                lista_nera = (disp_oggi[disp_oggi["Stato"].apply(norm) != "DISPONIBILE"]["Nome"].apply(norm) + disp_oggi[disp_oggi["Stato"].apply(norm) != "DISPONIBILE"]["Cognome"].apply(norm)).tolist()
-                staff_attivi = data["addetti"][data["addetti"]["Stato Rapporto"] == "Attivo"].copy()
-                staff_attivi["ID"] = staff_attivi["Nome"].apply(norm) + staff_attivi["Cognome"].apply(norm)
-                presenti = staff_attivi[(staff_attivi["GiornoRiposoSettimanale"].apply(norm) != giorno_sett_oggi) & (~staff_attivi["ID"].isin(lista_nera))]
+                d_tab = date_aperte[idx]
+                giorno_sett_oggi = norm(giorni_ita[d_tab.weekday()])
+                df_f = data["fabbisogno"].copy(); df_f['d_pure'] = df_f['Data'].apply(to_date_only)
+                fabb_oggi = df_f[df_f['d_pure'] == d_tab]
+                df_dis = data["disp"].copy(); df_dis['d_pure'] = df_dis['Data'].apply(to_date_only)
+                disp_oggi = df_dis[df_dis['d_pure'] == d_tab]
+                disp_oggi["Stato_Norm"] = disp_oggi["Stato"].apply(norm)
+                lista_nera_nomi = (disp_oggi[disp_oggi["Stato_Norm"] != "DISPONIBILE"]["Nome"].apply(norm) + disp_oggi[disp_oggi["Stato_Norm"] != "DISPONIBILE"]["Cognome"].apply(norm)).tolist()
+                
+                staff_base = data["addetti"][data["addetti"]["Stato Rapporto"] == "Attivo"].copy()
+                staff_base["ID_UNICO"] = staff_base["Nome"].apply(norm) + staff_base["Cognome"].apply(norm)
+                staff_base["RIPOSO_NORM"] = staff_base["GiornoRiposoSettimanale"].apply(norm)
+                presenti_effettivi = staff_base[(staff_base["RIPOSO_NORM"] != giorno_sett_oggi) & (~staff_base["ID_UNICO"].isin(lista_nera_nomi))]
 
-                cols = st.columns(3)
-                mansioni_visual = ["Addetto Attrazioni", "Assistente Bagnanti", "Bungee Jumping", "Radio"]
-                for i, m in enumerate(mansioni_visual):
-                    with cols[i % 3]:
-                        s_p = presenti[presenti["Mansione"].apply(norm) == norm(m)]
-                        f_r = fabb_oggi[fabb_oggi["Mansione"].apply(norm) == norm(m)]
-                        r = int(f_r["Quantita"].iloc[0]) if not f_r.empty else 0; n = len(s_p)
+                col1, col2, col3 = st.columns(3)
+                mansioni_target = ["Addetto Attrazioni", "Assistente Bagnanti", "Bungee Jumping", "Radio"]
+                for i, m in enumerate(mansioni_target):
+                    with [col1, col2, col3][i % 3]:
+                        s_p = presenti_effettivi[presenti_effettivi["Mansione"].apply(norm) == norm(m)]
+                        f_r = fabb_oggi[fabb_oggi["Mansione"].apply(norm) == norm(m)]; r = int(f_r["Quantita"].iloc[0]) if not f_r.empty else 0; n = len(s_p)
                         c = "#29b05c" if n >= r and r > 0 else "#ff4b4b" if n < r else "#808080"
                         st.markdown(genera_card(m, c, n, r, s_p), unsafe_allow_html=True)
 
-# --- 2. RIEPILOGO RIPOSI ---
-elif menu == "📅 Riepilogo Riposi":
+# --- 2. RIEPILOGO RIPOSI (Logica Originale + Grafica Pulita) ---
+elif menu == "📅 Riepilogo Riposi Settimanali":
     st.title("📅 Piano Riposi Settimanali")
     for m in lista_postazioni:
         add_m = data["addetti"][(data["addetti"]["Mansione"] == m) & (data["addetti"]["Stato Rapporto"] == "Attivo")]
         if not add_m.empty:
-            c_tit, c_pdf = st.columns([5, 1])
-            c_tit.subheader(f"📍 {m}")
-            c_pdf.download_button("📄 PDF", genera_pdf_riposi(m, add_m, giorni_ita), f"Riposi_{m}.pdf", "application/pdf", key=f"pdf_{m}")
-            with st.expander(f"Visualizza staff {m}", expanded=True):
+            col_tit, col_pdf = st.columns([5, 1])
+            col_tit.subheader(f"📍 {m}")
+            col_pdf.download_button("📄 Esporta PDF", genera_pdf_riposi(m, add_m, giorni_ita), f"Riposi_{m}.pdf", "application/pdf", key=f"pdf_{m}")
+            
+            with st.expander(f"Dettagli Riposi {m}", expanded=True):
                 c_rip = st.columns(7)
                 for i, g in enumerate(giorni_ita):
                     with c_rip[i]:
-                        st.markdown(f"<div style='text-align:center; background:#1f77b4; color:white; border-radius:5px; margin-bottom:10px;'>{g[:3]}</div>", unsafe_allow_html=True)
+                        st.markdown(f"<div style='text-align:center; background:#1f77b4; color:white; border-radius:5px; padding:2px; margin-bottom:10px;'><b>{g[:3].upper()}</b></div>", unsafe_allow_html=True)
                         for _, r in add_m[add_m["GiornoRiposoSettimanale"] == g].iterrows():
-                            st.markdown(f"<div class='name-badge' style='text-align:center; border:none; background:#e9ecef;'>{r['Nome']} {r['Cognome']}</div>", unsafe_allow_html=True)
+                            st.markdown(f"<div class='name-badge' style='text-align:center; border-left:none; background:#e9ecef; color:#444;'>{r['Nome']} {r['Cognome']}</div>", unsafe_allow_html=True)
+                
+                non_def = add_m[add_m["GiornoRiposoSettimanale"] == "Non Definito"]
+                if not non_def.empty:
+                    st.markdown("---")
+                    st.markdown("**Riposi Non Definiti:** " + ", ".join([f"{r['Nome']} {r['Cognome']}" for _, r in non_def.iterrows()]))
 
-# --- 3. GESTIONE RAPIDA ---
-elif menu == "📝 Gestione Rapida":
+# --- 3. GESTIONE RIPOSI RAPIDA ---
+elif menu == "📝 Gestione Riposi Rapida":
     st.title("📝 Modifica Rapida Riposi")
     df_mod = data["addetti"].copy()
     for m in lista_postazioni:
         add_m = df_mod[(df_mod["Mansione"] == m) & (df_mod["Stato Rapporto"] == "Attivo")]
         if not add_m.empty:
-            st.info(f"📍 {m}")
+            st.info(f"Postazione: {m}")
             for idx, row in add_m.iterrows():
                 c1, c2 = st.columns([3, 1])
                 c1.markdown(f"<div style='padding-top:10px;'>{row['Nome']} <b>{row['Cognome']}</b></div>", unsafe_allow_html=True)
-                df_mod.at[idx, 'GiornoRiposoSettimanale'] = c2.selectbox(f"Riposo", opzioni_riposo, index=opzioni_riposo.index(row['GiornoRiposoSettimanale']) if row['GiornoRiposoSettimanale'] in opzioni_riposo else 7, key=f"r_{idx}", label_visibility="collapsed")
-    if st.button("💾 SALVA TUTTE LE MODIFICHE", type="primary", use_container_width=True):
-        conn.update(worksheet="Addetti", data=df_mod); st.cache_data.clear(); st.success("Dati aggiornati!"); st.rerun()
+                df_mod.at[idx, 'GiornoRiposoSettimanale'] = c2.selectbox(f"Riposo", opzioni_riposo, index=opzioni_riposo.index(row['GiornoRiposoSettimanale']) if row['GiornoRiposoSettimanale'] in opzioni_riposo else 7, key=f"rap_{idx}", label_visibility="collapsed")
+            st.divider()
+    if st.button("💾 Salva Tutte le Modifiche", type="primary", use_container_width=True):
+        conn.update(worksheet="Addetti", data=df_mod); st.cache_data.clear(); st.success("Riposi aggiornati!"); st.rerun()
 
-# --- 4. DISPONIBILITÀ STAFF ---
-elif menu == "📅 Disponibilità Staff":
-    st.title("🗓️ Calendario Disponibilità")
-    df_t = data["addetti"].copy(); df_t['Full'] = df_t['Nome'] + " " + df_t['Cognome'] + df_t['Stato Rapporto'].apply(lambda x: " (CESSATO)" if x != "Attivo" else "")
-    sel = st.selectbox("Seleziona dipendente:", df_t['Full'].tolist())
-    row_d = df_t[df_t['Full'] == sel].iloc[0]
+# --- 4. AREA DISPONIBILITÀ STAFF ---
+elif menu == "📅 Area Disponibilità Staff":
+    st.title("🗓️ Calendario Disponibilità Individuale")
+    df_t = data["addetti"].copy()
+    df_t['Full'] = df_t['Nome'] + " " + df_t['Cognome'] + df_t['Stato Rapporto'].apply(lambda x: " (CESSATO)" if x != "Attivo" else "")
+    sel_dip = st.selectbox("Seleziona dipendente:", df_t['Full'].tolist())
+    row_d = df_t[df_t['Full'] == sel_dip].iloc[0]
     df_p = data["disp"][(data["disp"]["Nome"] == row_d['Nome']) & (data["disp"]["Cognome"] == row_d['Cognome'])]
     c_cal = st.columns(5)
     for idx, m in enumerate([5, 6, 7, 8, 9]):
         with c_cal[idx]: genera_mini_calendario(df_p, row_d['GiornoRiposoSettimanale'], 2026, m)
-    with st.expander("Modifica Assenze/Permessi"):
+    with st.expander("Modifica Disponibilità / Assenze"):
         dr = st.date_input("Periodo:", value=[], min_value=data_apertura, max_value=data_chiusura)
         st_r = st.radio("Stato:", ["Disponibile", "NON Disponibile", "Permesso", "Assente", "Malattia"], horizontal=True)
         if st.button("Salva Date") and len(dr) == 2:
@@ -302,9 +329,9 @@ elif menu == "📅 Disponibilità Staff":
             old = data["disp"][~((data["disp"]["Nome"] == row_d['Nome']) & (data["disp"]["Cognome"] == row_d['Cognome']) & (data["disp"]["Data"].astype(str).isin(d_list)))]
             conn.update(worksheet="Disponibilita", data=pd.concat([old, nuovi], ignore_index=True)); st.cache_data.clear(); st.rerun()
 
-# --- 5. ANAGRAFICA ---
-elif menu == "👥 Anagrafica":
-    st.title("👥 Gestione Anagrafica Personale")
+# --- 5. GESTIONE ANAGRAFICA ---
+elif menu == "👥 Gestione Anagrafica":
+    st.title("👥 Anagrafica Personale")
     if "editing_id" not in st.session_state: st.session_state["editing_id"] = None
     if st.session_state["editing_id"] is not None:
         idx = st.session_state["editing_id"]; row = data["addetti"].loc[idx]
@@ -313,62 +340,69 @@ elif menu == "👥 Anagrafica":
             c1, c2, c3 = st.columns(3); en = c1.text_input("Nome", row['Nome']); ec = c2.text_input("Cognome", row['Cognome']); estato = c3.selectbox("Stato", ["Attivo", "Dimesso", "Licenziato"], index=0)
             c_tel, c_mail = st.columns(2); etel = c_tel.text_input("Cellulare", row['Cellulare']); email = c_mail.text_input("Email", row['Email'])
             c1, c2 = st.columns(2); em = c1.selectbox("Mansione", lista_postazioni, index=0); er = c2.selectbox("Riposo", opzioni_riposo, index=0)
-            e_cont = st.text_area("Contestazioni", row['Contestazioni'])
-            if st.form_submit_button("Salva"):
-                data["addetti"].loc[idx] = [en, ec, em, er, e_cont, estato, "", etel, email]
+            e_cont = st.text_area("Lettere di Contestazione", row['Contestazioni'])
+            if st.form_submit_button("💾 Salva"):
+                data["addetti"].at[idx, 'Nome'] = en; data["addetti"].at[idx, 'Cognome'] = ec; data["addetti"].at[idx, 'Stato Rapporto'] = estato
+                data["addetti"].at[idx, 'Cellulare'] = etel; data["addetti"].at[idx, 'Email'] = email
+                data["addetti"].at[idx, 'Mansione'] = em; data["addetti"].at[idx, 'GiornoRiposoSettimanale'] = er; data["addetti"].at[idx, 'Contestazioni'] = e_cont
                 conn.update(worksheet="Addetti", data=data["addetti"]); st.cache_data.clear(); st.session_state["editing_id"] = None; st.rerun()
-            if st.form_submit_button("Annulla"): st.session_state["editing_id"] = None; st.rerun()
+            if st.form_submit_button("❌ Annulla"): st.session_state["editing_id"] = None; st.rerun()
     else:
         t1, t2 = st.tabs(["📋 Elenco Staff", "➕ Nuovo Addetto"])
         with t1:
             for idx, r in data["addetti"][data["addetti"]["Stato Rapporto"] == "Attivo"].iterrows():
                 with st.container():
                     c1, c2, c3 = st.columns([3, 4, 1])
-                    wa = format_wa_link(r); wa_icon = f' <a href="{wa}" target="_blank">📲</a>' if wa else ""
+                    wa = format_wa_link(r); wa_icon = f' <a href="{wa}" target="_blank" style="text-decoration:none;">📲</a>' if wa else ""
                     c1.markdown(f"**{r['Nome']} {r['Cognome']}**{wa_icon}", unsafe_allow_html=True)
-                    c2.caption(f"📞 {r['Cellulare']} | 📧 {r['Email']} | Riposo: {r['GiornoRiposoSettimanale']}")
-                    if c3.button("✏️", key=f"e_{idx}"): st.session_state["editing_id"] = idx; st.rerun()
+                    c2.caption(f"{r['Mansione']} | Riposo: {r['GiornoRiposoSettimanale']} | 📞 {r['Cellulare']}")
+                    if c3.button("✏️", key=f"ed_{idx}"): st.session_state["editing_id"] = idx; st.rerun()
                     st.divider()
         with t2:
-            with st.form("n"):
+            with st.form("nuovo"):
                 c1, c2 = st.columns(2); nn, nc = c1.text_input("Nome"), c2.text_input("Cognome")
                 nm, nr = c1.selectbox("Mansione", lista_postazioni), c2.selectbox("Riposo", opzioni_riposo)
+                ntel, nmail = c1.text_input("Cellulare"), c2.text_input("Email")
                 if st.form_submit_button("Aggiungi"):
-                    new = pd.DataFrame([{"Nome":nn, "Cognome":nc, "Mansione":nm, "GiornoRiposoSettimanale":nr, "Stato Rapporto": "Attivo"}])
+                    new = pd.DataFrame([{"Nome":nn, "Cognome":nc, "Mansione":nm, "GiornoRiposoSettimanale":nr, "Stato Rapporto": "Attivo", "Cellulare": ntel, "Email": nmail}])
                     conn.update(worksheet="Addetti", data=pd.concat([data["addetti"], new], ignore_index=True)); st.cache_data.clear(); st.rerun()
 
-# --- 6. FABBISOGNO ---
-elif menu == "⚙️ Fabbisogno":
-    st.title("⚙️ Pianificazione Fabbisogno")
+# --- 6. PIANIFICA FABBISOGNO ---
+elif menu == "⚙️ Pianifica Fabbisogno":
+    st.title("⚙️ Fabbisogno Giornaliero")
     dr = st.date_input("Periodo:", value=[])
     if len(dr) == 2:
         date_list = [dr[0] + timedelta(days=x) for x in range((dr[1]-dr[0]).days + 1)]
         f_inputs = {p: st.number_input(f"{p}:", min_value=0) for p in lista_postazioni}
-        if st.button("Salva Fabbisogno"):
+        if st.button("💾 Salva Fabbisogno"):
             new_r = [{"Data": str(d), "Mansione": p, "Quantita": v} for d in date_list for p, v in f_inputs.items()]
             old_d = data["fabbisogno"][~data["fabbisogno"]["Data"].astype(str).isin([str(d) for d in date_list])]
             conn.update(worksheet="Fabbisogno", data=pd.concat([old_d, pd.DataFrame(new_r)], ignore_index=True)); st.cache_data.clear(); st.success("Fabbisogno aggiornato!"); st.rerun()
 
-# --- 7, 8, 9 (ADMIN TOOLS) ---
-elif menu == "🚩 Postazioni":
-    st.title("🚩 Gestione Postazioni"); np = st.text_input("Nuova Postazione")
-    if st.button("Aggiungi"): conn.update(worksheet="Postazioni", data=pd.concat([data["postazioni"], pd.DataFrame([{"Nome Postazione": np}])], ignore_index=True)); st.cache_data.clear(); st.rerun()
+# --- 7. GESTIONE POSTAZIONI ---
+elif menu == "🚩 Gestione Postazioni":
+    st.title("🚩 Postazioni")
+    np = st.text_input("Nuova Postazione")
+    if st.button("Aggiungi"):
+        conn.update(worksheet="Postazioni", data=pd.concat([data["postazioni"], pd.DataFrame([{"Nome Postazione": np}])], ignore_index=True)); st.cache_data.clear(); st.rerun()
     st.table(data["postazioni"])
 
-elif menu == "⚙️ Impostazioni":
-    st.title("⚙️ Configurazione Stagione")
-    with st.form("s"):
-        na, nc = st.date_input("Inizio:", data_apertura), st.date_input("Fine:", data_chiusura)
+# --- 8. IMPOSTAZIONI STAGIONE ---
+elif menu == "⚙️ Impostazioni Stagione":
+    st.title("⚙️ Configurazione")
+    with st.form("config"):
+        na, nc = st.date_input("Apertura:", data_apertura), st.date_input("Chiusura:", data_chiusura)
         if st.form_submit_button("Salva"):
             data["config"].loc[data["config"]["Ruolo"] == "Apertura", "Password"] = str(na)
             data["config"].loc[data["config"]["Ruolo"] == "Chiusura", "Password"] = str(nc)
             conn.update(worksheet="Config", data=data["config"]); st.cache_data.clear(); st.rerun()
 
-elif menu == "🔑 Password":
+# --- 9. GESTIONE PASSWORD ---
+elif menu == "🔑 Gestione Password":
     st.title("🔑 Sicurezza")
-    with st.form("p"):
+    with st.form("pwd"):
         ap, up = st.text_input("Admin", value=admin_pwd), st.text_input("User", value=user_pwd)
-        if st.form_submit_button("Salva"):
+        if st.form_submit_button("Aggiorna Password"):
             data["config"].loc[data["config"]["Ruolo"]=="Admin", "Password"] = ap
             data["config"].loc[data["config"]["Ruolo"]=="User", "Password"] = up
-            conn.update(worksheet="Config", data=data["config"]); st.cache_data.clear(); st.rerun()
+            conn.update(worksheet="Config", data=data["config"]); st.cache_data.clear(); st.success("Password salvate!"); st.rerun()
