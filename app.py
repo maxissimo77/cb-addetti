@@ -270,7 +270,7 @@ if menu == "📊 Dashboard":
                         c = "#29b05c" if n >= r and r > 0 else "#ff4b4b" if n < r else "#808080"
                         st.markdown(genera_card(m, c, n, r, s_p), unsafe_allow_html=True)
 
-# --- 2. RIEPILOGO RIPOSI (Codice Corretto per Renderizzare l'HTML) ---
+# --- 2. RIEPILOGO RIPOSI (Nuova Versione con Container Nativi) ---
 elif menu == "📅 Riepilogo Riposi Settimanali":
     st.title("📅 Piano Riposi Settimanali")
     
@@ -284,28 +284,35 @@ elif menu == "📅 Riepilogo Riposi Settimanali":
             with col_pdf:
                 st.download_button("📄 PDF", genera_pdf_riposi(m, add_m, giorni_ita), f"Riposi_{m}.pdf", "application/pdf", key=f"pdf_{m}")
             
-            # 1. Prepariamo le colonne
-            colonne_riposo = giorni_ita.copy()
-            if not add_m[add_m["GiornoRiposoSettimanale"] == "Non Definito"].empty:
-                colonne_riposo.append("Non Definito")
-
-            width_perc = 100 / len(colonne_riposo)
-
-            # 2. Costruiamo la stringa HTML
-            html_giorni = ""
-            for g in colonne_riposo:
-                header_bg = "#1f77b4" if g != "Non Definito" else "#6c757d"
-                label = g[:3].upper() if g != "Non Definito" else "N.D."
+            # Creiamo il BOX bianco usando il container nativo di Streamlit
+            with st.container(border=True):
+                # Prepariamo i giorni e l'eventuale colonna N.D.
+                col_names = giorni_ita.copy()
+                has_nd = not add_m[add_m["GiornoRiposoSettimanale"] == "Non Definito"].empty
+                if has_nd:
+                    col_names.append("Non Definito")
                 
-                persone = add_m[add_m["GiornoRiposoSettimanale"] == g]
-                badges = "".join([f'<div class="name-badge" style="text-align:center; border-left:none; background:#f8f9fa; font-size:11px; margin-bottom:4px;">{r["Nome"]} {r["Cognome"]}</div>' for _, r in persone.iterrows()])
+                # Creiamo le colonne fisicamente
+                cols = st.columns(len(col_names))
                 
-                html_giorni += f"""
-                    <div style="width: {width_perc}%; text-align: center; padding: 0 5px;">
-                        <div style="background:{header_bg}; color:white; border-radius:5px; padding:5px; font-weight:bold; margin-bottom:10px; font-size:12px;">{label}</div>
-                        {badges}
-                    </div>
-                """
+                for i, g in enumerate(col_names):
+                    with cols[i]:
+                        # Header del giorno
+                        header_color = "#1f77b4" if g != "Non Definito" else "#6c757d"
+                        label = g[:3].upper() if g != "Non Definito" else "N.D."
+                        
+                        st.markdown(f"""
+                            <div style="background:{header_color}; color:white; border-radius:5px; padding:2px; text-align:center; font-weight:bold; font-size:12px; margin-bottom:10px;">
+                                {label}
+                            </div>
+                        """, unsafe_allow_html=True)
+                        
+                        # Lista persone
+                        persone = add_m[add_m["GiornoRiposoSettimanale"] == g]
+                        for _, r in persone.iterrows():
+                            # Usiamo il badge definito nel CSS iniziale
+                            st.markdown(f'<div class="name-badge" style="text-align:center; border-left:none; background:#f8f9fa; font-size:11px;">{r["Nome"]} {r["Cognome"]}</div>', unsafe_allow_html=True)
+            st.markdown("<br>", unsafe_allow_html=True)
 
             # 3. RENDERIZZIAMO TUTTO (Assicurati che questa parte sia identica)
             st.markdown(f"""
