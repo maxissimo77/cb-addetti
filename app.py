@@ -315,7 +315,7 @@ elif menu == "📅 Riepilogo Riposi Settimanali":
             
             st.markdown("<br>", unsafe_allow_html=True)
 
-       # --- 3. GESTIONE RIPOSI RAPIDA (Conteggi divisi per Mansione) ---
+     # --- 3. GESTIONE RIPOSI RAPIDA (Conteggi divisi per Mansione) ---
 elif menu == "📝 Gestione Riposi Rapida":
     st.title("📝 Modifica Rapida Riposi")
     st.info("I box mostrano quanti addetti riposano ogni giorno per la specifica mansione.")
@@ -365,33 +365,11 @@ elif menu == "📝 Gestione Riposi Rapida":
                     )
             st.divider()
 
-     # --- ELENCO MODIFICA ---
-    for m in lista_postazioni:
-        add_m = df_mod[(df_mod["Mansione"] == m) & (df_mod["Stato Rapporto"] == "Attivo")]
-        if not add_m.empty:
-            with st.expander(f"📍 Postazione: {m}", expanded=True):
-                for idx, row in add_m.iterrows():
-                    c1, c2 = st.columns([3, 1])
-                    c1.markdown(f"<div style='padding-top:10px;'>{row['Nome']} <b>{row['Cognome']}</b></div>", unsafe_allow_html=True)
-                    
-                    # Selezione del riposo
-                    current_val = row['GiornoRiposoSettimanale']
-                    default_idx = opzioni_riposo.index(current_val) if current_val in opzioni_riposo else 7
-                    
-                    new_val = c2.selectbox(
-                        f"Riposo_{idx}", 
-                        opzioni_riposo, 
-                        index=default_idx, 
-                        key=f"rap_sel_{idx}", 
-                        label_visibility="collapsed"
-                    )
-                    df_mod.at[idx, 'GiornoRiposoSettimanale'] = new_val
-
     st.markdown("<br>", unsafe_allow_html=True)
     if st.button("💾 SALVA TUTTE LE MODIFICHE", type="primary", use_container_width=True):
         conn.update(worksheet="Addetti", data=df_mod)
         st.cache_data.clear()
-        st.success("Tutti i riposi sono stati aggiornati correttamente!")
+        st.success("Modifiche salvate con successo!")
         st.rerun()
 
 # --- 4. AREA DISPONIBILITÀ STAFF ---
