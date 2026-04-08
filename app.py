@@ -4,9 +4,9 @@ import pandas as pd
 from datetime import datetime, timedelta
 import calendar
 import urllib.parse
-from io import BytesIO
+from i o import BytesIO
 
-# --- LIBRERIE PER PDF (Aggiunte) ---
+# --- LIBRERIE PER PDF (Originali dal tuo codice) ---
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
@@ -85,25 +85,18 @@ def format_wa_link(row):
     msg_encoded = urllib.parse.quote(msg)
     return f"https://wa.me/{tel}?text={msg_encoded}"
 
-# --- FUNZIONE GENERAZIONE PDF (Nuova) ---
+# --- FUNZIONE GENERAZIONE PDF (Originale) ---
 def genera_pdf_riposi(mansione, df_mansione, giorni_ita):
     buffer = BytesIO()
-    # Impostiamo il foglio in orizzontale (landscape) per far stare meglio i 7 giorni
     doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=18)
     elements = []
     styles = getSampleStyleSheet()
     
-    # Titolo
     elements.append(Paragraph(f"Riepilogo Riposi Settimanali - {mansione}", styles['Title']))
     elements.append(Spacer(1, 20))
     
-    # Intestazione Tabella
     header = [g.upper() for g in giorni_ita]
-    
-    # Mappa delle persone per giorno
     mappa_persone = {g: [f"{r['Nome']} {r['Cognome']}" for _, r in df_mansione[df_mansione["GiornoRiposoSettimanale"] == g].iterrows()] for g in giorni_ita}
-    
-    # Calcolo righe massime necessarie
     max_rows = max([len(v) for v in mappa_persone.values()]) if mappa_persone else 0
     
     data_tabella = [header]
@@ -114,7 +107,6 @@ def genera_pdf_riposi(mansione, df_mansione, giorni_ita):
             fila.append(persone[i] if i < len(persone) else "")
         data_tabella.append(fila)
     
-    # Creazione Tabella
     t = Table(data_tabella, colWidths=[110]*7)
     t.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#1f77b4")),
@@ -311,13 +303,12 @@ if menu == "📊 Dashboard":
                     c3 = "#29b05c" if n3 >= r3 and r3 > 0 else "#ff4b4b" if n3 < r3 else "#808080"
                     st.markdown(genera_card(m3, c3, n3, r3, s_p3), unsafe_allow_html=True)
 
-# --- 2. RIEPILOGO RIPOSI (Aggiornato con PDF) ---
+# --- 2. RIEPILOGO RIPOSI SETTIMANALI ---
 elif menu == "📅 Riepilogo Riposi Settimanali":
     st.header("Riepilogo Giorni di Riposo (Solo Attivi)")
     for m in lista_postazioni:
         add_m = data["addetti"][(data["addetti"]["Mansione"] == m) & (data["addetti"]["Stato Rapporto"] == "Attivo")]
         if not add_m.empty:
-            # Layout con titolo a sinistra e bottone PDF a destra
             col_tit, col_pdf = st.columns([5, 1])
             with col_tit:
                 st.subheader(f"📍 {m}")
@@ -370,7 +361,7 @@ elif menu == "📝 Gestione Riposi Rapida":
     if st.button("💾 Salva Tutte le Modifiche", type="primary", use_container_width=True):
         conn.update(worksheet="Addetti", data=df_mod); st.cache_data.clear(); st.success("Salvato!"); st.rerun()
 
-# --- 4. AREA DISPONIBILITÀ ---
+# --- 4. AREA DISPONIBILITÀ STAFF ---
 elif menu == "📅 Area Disponibilità Staff":
     st.header("Calendario Disponibilità Individuale")
     df_t = data["addetti"].copy()
@@ -460,7 +451,7 @@ elif menu == "👥 Gestione Anagrafica":
                     conn.update(worksheet="Addetti", data=pd.concat([data["addetti"], new_member], ignore_index=True))
                     st.cache_data.clear(); st.rerun()
 
-# --- ALTRE SEZIONI ---
+# --- 6. PIANIFICA FABBISOGNO ---
 elif menu == "⚙️ Pianifica Fabbisogno":
     st.header("Fabbisogno")
     tipo = st.radio("Modalità:", ["Giorno Singolo", "Intervallo"], horizontal=True)
@@ -475,6 +466,15 @@ elif menu == "⚙️ Pianifica Fabbisogno":
             old_d = data["fabbisogno"][~data["fabbisogno"]["Data"].astype(str).isin([str(d) for d in date_list])]
             conn.update(worksheet="Fabbisogno", data=pd.concat([old_d, pd.DataFrame(new_r)], ignore_index=True)); st.cache_data.clear(); st.rerun()
 
+# --- 7. GESTIONE POSTAZIONI ---
+elif menu == "🚩 Gestione Postazioni":
+    st.header("Postazioni")
+    np = st.text_input("Nuova")
+    if st.button("Aggiungi"):
+        conn.update(worksheet="Postazioni", data=pd.concat([data["postazioni"], pd.DataFrame([{"Nome Postazione": np}])], ignore_index=True)); st.cache_data.clear(); st.rerun()
+    st.table(data["postazioni"])
+
+# --- 8. IMPOSTAZIONI STAGIONE ---
 elif menu == "⚙️ Impostazioni Stagione":
     st.header("Configurazione")
     with st.form("s"):
@@ -485,13 +485,7 @@ elif menu == "⚙️ Impostazioni Stagione":
             conf_agg.loc[conf_agg["Ruolo"] == "Chiusura", "Password"] = str(nc)
             conn.update(worksheet="Config", data=conf_agg); st.cache_data.clear(); st.rerun()
 
-elif menu == "🚩 Gestione Postazioni":
-    st.header("Postazioni")
-    np = st.text_input("Nuova")
-    if st.button("Aggiungi"):
-        conn.update(worksheet="Postazioni", data=pd.concat([data["postazioni"], pd.DataFrame([{"Nome Postazione": np}])], ignore_index=True)); st.cache_data.clear(); st.rerun()
-    st.table(data["postazioni"])
-
+# --- 9. GESTIONE PASSWORD ---
 elif menu == "🔑 Gestione Password":
     st.header("Password")
     with st.form("p"):
