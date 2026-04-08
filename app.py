@@ -270,40 +270,35 @@ if menu == "📊 Dashboard":
                         c = "#29b05c" if n >= r and r > 0 else "#ff4b4b" if n < r else "#808080"
                         st.markdown(genera_card(m, c, n, r, s_p), unsafe_allow_html=True)
 
-# --- 2. RIEPILOGO RIPOSI (Grafica con Riquadri e Non Definiti in Box) ---
+# --- 2. RIEPILOGO RIPOSI (Codice Corretto per Renderizzare l'HTML) ---
 elif menu == "📅 Riepilogo Riposi Settimanali":
     st.title("📅 Piano Riposi Settimanali")
     
     for m in lista_postazioni:
-        # Filtro addetti attivi per la mansione specifica
         add_m = data["addetti"][(data["addetti"]["Mansione"] == m) & (data["addetti"]["Stato Rapporto"] == "Attivo")]
         
         if not add_m.empty:
-            # Layout Intestazione Mansione + Pulsante PDF
             col_tit, col_pdf = st.columns([5, 1])
             with col_tit:
                 st.markdown(f"### 📍 {m}")
             with col_pdf:
                 st.download_button("📄 PDF", genera_pdf_riposi(m, add_m, giorni_ita), f"Riposi_{m}.pdf", "application/pdf", key=f"pdf_{m}")
             
-            # Prepariamo la lista dei giorni includendo l'eventuale colonna "Non Definito"
+            # 1. Prepariamo le colonne
             colonne_riposo = giorni_ita.copy()
             if not add_m[add_m["GiornoRiposoSettimanale"] == "Non Definito"].empty:
                 colonne_riposo.append("Non Definito")
 
-            # Calcolo larghezza dinamica per le colonne (100% / numero di colonne)
             width_perc = 100 / len(colonne_riposo)
 
-            # Generazione HTML del Box
+            # 2. Costruiamo la stringa HTML
             html_giorni = ""
             for g in colonne_riposo:
-                # Colore diverso se è "Non Definito"
                 header_bg = "#1f77b4" if g != "Non Definito" else "#6c757d"
                 label = g[:3].upper() if g != "Non Definito" else "N.D."
                 
-                # Estrazione persone per quel giorno
                 persone = add_m[add_m["GiornoRiposoSettimanale"] == g]
-                badges = "".join([f'<div class="name-badge" style="text-align:center; border-left:none; background:#f8f9fa; font-size:11px;">{r["Nome"]} {r["Cognome"]}</div>' for _, r in persone.iterrows()])
+                badges = "".join([f'<div class="name-badge" style="text-align:center; border-left:none; background:#f8f9fa; font-size:11px; margin-bottom:4px;">{r["Nome"]} {r["Cognome"]}</div>' for _, r in persone.iterrows()])
                 
                 html_giorni += f"""
                     <div style="width: {width_perc}%; text-align: center; padding: 0 5px;">
@@ -312,6 +307,7 @@ elif menu == "📅 Riepilogo Riposi Settimanali":
                     </div>
                 """
 
+            # 3. RENDERIZZIAMO TUTTO (Assicurati che questa parte sia identica)
             st.markdown(f"""
                 <div style="border: 1px solid #ddd; border-radius: 12px; background: white; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 30px;">
                     <div style="display: flex; flex-direction: row; justify-content: flex-start; align-items: flex-start;">
