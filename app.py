@@ -418,7 +418,7 @@ elif menu == "📅 Area Disponibilità Staff":
             old = data["disp"][~((data["disp"]["Nome"] == row_d['Nome']) & (data["disp"]["Cognome"] == row_d['Cognome']) & (data["disp"]["Data"].astype(str).isin(d_list)))]
             conn.update(worksheet="Disponibilita", data=pd.concat([old, nuovi], ignore_index=True)); st.cache_data.clear(); st.rerun()
 
-# --- 5. GESTIONE ANAGRAFICA (Versione Corretta Anti-Crash) ---
+# --- 5. GESTIONE ANAGRAFICA (Versione con Statistiche Disponibilità) ---
 elif menu == "👥 Gestione Anagrafica":
     st.title("👥 Anagrafica Personale")
     
@@ -427,7 +427,6 @@ elif menu == "👥 Gestione Anagrafica":
 
     if st.session_state["editing_id"] is not None:
         idx = st.session_state["editing_id"]
-        # Recupero sicuro della riga tramite l'indice
         row = data["addetti"].loc[idx]
         
         with st.form("edit_form_new"):
@@ -481,12 +480,9 @@ elif menu == "👥 Gestione Anagrafica":
             with col_f2:
                 filtro_man = st.selectbox("Filtra Mansione:", ["Tutte"] + lista_postazioni, key="f_man_anag")
 
-            # Creiamo una copia per la visualizzazione
             df_display = data["addetti"].copy()
-            
             if filtro_stato == "Solo Attivi":
                 df_display = df_display[df_display["Stato Rapporto"] == "Attivo"]
-            
             if filtro_man != "Tutte":
                 df_display = df_display[df_display["Mansione"] == filtro_man]
             
@@ -494,6 +490,16 @@ elif menu == "👥 Gestione Anagrafica":
             st.divider()
 
             for idx, r in df_display.iterrows():
+                # --- LOGICA CONTEGGI DISPONIBILITÀ ---
+                disp_user = data["disp"][(data["disp"]["Nome"] == r['Nome']) & (data["disp"]["Cognome"] == r['Cognome'])]
+                def count_status(status_name):
+                    return len(disp_user[disp_user["Stato"].str.upper() == status_name.upper()])
+
+                c_disp = count_status("Disponibile")
+                c_ass = count_status("Assente")
+                c_perm = count_status("Permesso")
+                c_mal = count_status("Malattia")
+
                 with st.container():
                     c1, c2, c3 = st.columns([3, 5, 1])
                     
@@ -503,6 +509,17 @@ elif menu == "👥 Gestione Anagrafica":
                     nome_style = "color: #333;" if r['Stato Rapporto'] == "Attivo" else "color: #888; text-decoration: line-through;"
                     c1.markdown(f"<span style='{nome_style} font-weight: bold;'>{r['Nome']} {r['Cognome']}</span>{wa_html}", unsafe_allow_html=True)
                     c1.caption(f"📍 {r['Mansione']}")
+                    
+                    # Badge Statistiche sotto il nome
+                    stati_html = f"""
+                    <div style="display: flex; gap: 4px; margin-top: 5px;">
+                        <span title="Disponibile" style="background:#29b05c; color:white; padding:1px 6px; border-radius:10px; font-size:10px; font-weight:bold;">{c_disp} D</span>
+                        <span title="Assente" style="background:#000000; color:white; padding:1px 6px; border-radius:10px; font-size:10px; font-weight:bold;">{c_ass} A</span>
+                        <span title="Permesso" style="background:#00008B; color:white; padding:1px 6px; border-radius:10px; font-size:10px; font-weight:bold;">{c_perm} P</span>
+                        <span title="Malattia" style="background:#696969; color:white; padding:1px 6px; border-radius:10px; font-size:10px; font-weight:bold;">{c_mal} M</span>
+                    </div>
+                    """
+                    c1.markdown(stati_html, unsafe_allow_html=True)
                     
                     info_text = f"📞 {r['Cellulare']} | 📧 {r['Email'] if r['Email'] else 'Nessuna mail'}"
                     c2.markdown(f"<div style='font-size:0.85rem; color:#555;'>{info_text}</div>", unsafe_allow_html=True)
@@ -517,8 +534,6 @@ elif menu == "👥 Gestione Anagrafica":
                         c2.markdown(f"""<div style="background-color:#fff5f5; border-left:3px solid #ff4b4b; padding:5px 10px; margin-top:5px; font-size:0.8rem; color:#c92a2a;">
                                     🚩 <b>Contestazioni:</b> {r['Contestazioni']}</div>""", unsafe_allow_html=True)
                     
-                    # --- CHIAVE UNICA RINFORZATA PER IL BOTTONE ---
-                    # Usiamo 'list' + idx per assicurarci che Streamlit non veda chiavi duplicate
                     if c3.button("✏️", key=f"btn_list_edit_{idx}"):
                         st.session_state["editing_id"] = idx
                         st.rerun()
@@ -526,7 +541,6 @@ elif menu == "👥 Gestione Anagrafica":
                     st.divider()
 
         with t2:
-            # (Il codice per aggiungere nuovo collaboratore rimane lo stesso ma controlla i nomi dei campi)
             st.subheader("Inserisci un nuovo collaboratore")
             with st.form("nuovo_addetto_form"):
                 nc1, nc2, nc3 = st.columns(3)
