@@ -216,7 +216,7 @@ if st.sidebar.button("Logout"):
 
 # --- 1. DASHBOARD (Versione Pulita con Radio sotto Bagnini) ---
 if menu == "📊 Dashboard":
-    st.title("📍 Stato Occupazione Parco")
+    st.title("Situazione giornaliera")
     input_d = st.date_input("Inizio visualizzazione (settimana):", default_date)
     date_range = [input_d + timedelta(days=i) for i in range(7)]
     date_aperte = [d for d in date_range if data_apertura <= d <= data_chiusura]
@@ -298,7 +298,7 @@ if menu == "📊 Dashboard":
                     st.markdown(genera_card(m, c, n, r, s_p), unsafe_allow_html=True)
 # --- 2. RIEPILOGO RIPOSI (Layout Corretto e Senza Errori) ---
 elif menu == "📅 Riepilogo Riposi Settimanali":
-    st.title("📅 Piano Riposi Settimanali")
+    st.title("Riposi Settimanali")
     
     for m in lista_postazioni:
         # Recupero addetti attivi per mansione
@@ -343,7 +343,7 @@ elif menu == "📅 Riepilogo Riposi Settimanali":
 
      # --- 3. GESTIONE RIPOSI RAPIDA (Conteggi divisi per Mansione) ---
 elif menu == "📝 Gestione Riposi Rapida":
-    st.title("📝 Modifica Rapida Riposi")
+    st.title("Modifica Rapida Riposi")
     st.info("I box mostrano quanti addetti riposano ogni giorno per la specifica mansione.")
     
     df_mod = data["addetti"].copy()
@@ -400,7 +400,7 @@ elif menu == "📝 Gestione Riposi Rapida":
 
 # --- 4. AREA DISPONIBILITÀ STAFF ---
 elif menu == "📅 Area Disponibilità Staff":
-    st.title("🗓️ Calendario Disponibilità Individuale")
+    st.title("Calendario Disponibilità")
     df_t = data["addetti"].copy()
     df_t['Full'] = df_t['Nome'] + " " + df_t['Cognome'] + df_t['Stato Rapporto'].apply(lambda x: " (CESSATO)" if x != "Attivo" else "")
     sel_dip = st.selectbox("Seleziona dipendente:", df_t['Full'].tolist())
@@ -420,7 +420,7 @@ elif menu == "📅 Area Disponibilità Staff":
 
 # --- 5. GESTIONE ANAGRAFICA (Versione con Statistiche Disponibilità) ---
 elif menu == "👥 Gestione Anagrafica":
-    st.title("👥 Anagrafica Personale")
+    st.title("Anagrafica")
     
     if "editing_id" not in st.session_state: 
         st.session_state["editing_id"] = None
@@ -568,7 +568,7 @@ elif menu == "👥 Gestione Anagrafica":
 
 # --- 6. PIANIFICA FABBISOGNO ---
 elif menu == "⚙️ Pianifica Fabbisogno":
-    st.title("⚙️ Fabbisogno Giornaliero")
+    st.title("Fabbisogno Giornaliero")
     dr = st.date_input("Periodo:", value=[])
     if len(dr) == 2:
         date_list = [dr[0] + timedelta(days=x) for x in range((dr[1]-dr[0]).days + 1)]
@@ -580,7 +580,7 @@ elif menu == "⚙️ Pianifica Fabbisogno":
 
 # --- 7. GESTIONE POSTAZIONI ---
 elif menu == "🚩 Gestione Postazioni":
-    st.title("🚩 Postazioni")
+    st.title("Postazioni")
     np = st.text_input("Nuova Postazione")
     if st.button("Aggiungi"):
         conn.update(worksheet="Postazioni", data=pd.concat([data["postazioni"], pd.DataFrame([{"Nome Postazione": np}])], ignore_index=True)); st.cache_data.clear(); st.rerun()
@@ -588,7 +588,7 @@ elif menu == "🚩 Gestione Postazioni":
 
 # --- 8. IMPOSTAZIONI STAGIONE ---
 elif menu == "⚙️ Impostazioni Stagione":
-    st.title("⚙️ Configurazione")
+    st.title("Configurazione")
     with st.form("config"):
         na, nc = st.date_input("Apertura:", data_apertura), st.date_input("Chiusura:", data_chiusura)
         if st.form_submit_button("Salva"):
@@ -598,7 +598,7 @@ elif menu == "⚙️ Impostazioni Stagione":
 
 # --- 9. GESTIONE PASSWORD ---
 elif menu == "🔑 Gestione Password":
-    st.title("🔑 Sicurezza")
+    st.title("Sicurezza")
     with st.form("pwd"):
         ap, up = st.text_input("Admin", value=admin_pwd), st.text_input("User", value=user_pwd)
         if st.form_submit_button("Aggiorna Password"):
