@@ -418,7 +418,7 @@ elif menu == "📅 Area Disponibilità Staff":
             old = data["disp"][~((data["disp"]["Nome"] == row_d['Nome']) & (data["disp"]["Cognome"] == row_d['Cognome']) & (data["disp"]["Data"].astype(str).isin(d_list)))]
             conn.update(worksheet="Disponibilita", data=pd.concat([old, nuovi], ignore_index=True)); st.cache_data.clear(); st.rerun()
 
-# --- 5. GESTIONE ANAGRAFICA (Versione con Statistiche Disponibilità) ---
+# --- 5. GESTIONE ANAGRAFICA (Versione con Ordinamento Statistiche) ---
 elif menu == "👥 Gestione Anagrafica":
     st.title("Anagrafica")
     
@@ -474,32 +474,45 @@ elif menu == "👥 Gestione Anagrafica":
         t1, t2 = st.tabs(["📋 Elenco Personale", "➕ Aggiungi Nuovo"])
         
         with t1:
-            col_f1, col_f2 = st.columns([1, 1])
-            with col_f1:
-                filtro_stato = st.radio("Filtra Stato:", ["Solo Attivi", "Tutti"], horizontal=True, key="f_stato_anag")
-            with col_f2:
-                filtro_man = st.selectbox("Filtra Mansione:", ["Tutte"] + lista_postazioni, key="f_man_anag")
+            # --- FILTRI E ORDINAMENTO ---
+            c_f1, c_f2, c_f3 = st.columns([1, 1, 1])
+            filtro_stato = c_f1.radio("Stato:", ["Solo Attivi", "Tutti"], horizontal=True)
+            filtro_man = c_f2.selectbox("Mansione:", ["Tutte"] + lista_postazioni)
+            ordina_per = c_f3.selectbox("Ordina per:", ["Alfabetico", "Più Disponibili", "Più Assenti", "Più Permessi", "Più Malattie"])
 
+            # Preparazione DataFrame con conteggi per l'ordinamento
             df_display = data["addetti"].copy()
+            
+            # Funzione helper per conteggi massivi
+            def get_counts(r):
+                disp_user = data["disp"][(data["disp"]["Nome"] == r['Nome']) & (data["disp"]["Cognome"] == r['Cognome'])]
+                def count_s(s): return len(disp_user[disp_user["Stato"].str.upper() == s.upper()])
+                return pd.Series([count_s("Disponibile"), count_s("Assente"), count_s("Permesso"), count_s("Malattia")])
+
+            # Applichiamo i conteggi come colonne temporanee
+            df_display[["C_D", "C_A", "C_P", "C_M"]] = df_display.apply(get_counts, axis=1)
+
+            # Filtri
             if filtro_stato == "Solo Attivi":
                 df_display = df_display[df_display["Stato Rapporto"] == "Attivo"]
             if filtro_man != "Tutte":
                 df_display = df_display[df_display["Mansione"] == filtro_man]
+
+            # Logica di Ordinamento
+            mappa_ordine = {
+                "Alfabetico": (["Cognome", "Nome"], [True, True]),
+                "Più Disponibili": (["C_D", "Cognome"], [False, True]),
+                "Più Assenti": (["C_A", "Cognome"], [False, True]),
+                "Più Permessi": (["C_P", "Cognome"], [False, True]),
+                "Più Malattie": (["C_M", "Cognome"], [False, True])
+            }
+            sort_cols, sort_asc = mappa_ordine[ordina_per]
+            df_display = df_display.sort_values(by=sort_cols, ascending=sort_asc)
             
             st.markdown(f"**Risultati trovati: {len(df_display)}**")
             st.divider()
 
             for idx, r in df_display.iterrows():
-                # --- LOGICA CONTEGGI DISPONIBILITÀ ---
-                disp_user = data["disp"][(data["disp"]["Nome"] == r['Nome']) & (data["disp"]["Cognome"] == r['Cognome'])]
-                def count_status(status_name):
-                    return len(disp_user[disp_user["Stato"].str.upper() == status_name.upper()])
-
-                c_disp = count_status("Disponibile")
-                c_ass = count_status("Assente")
-                c_perm = count_status("Permesso")
-                c_mal = count_status("Malattia")
-
                 with st.container():
                     c1, c2, c3 = st.columns([3, 5, 1])
                     
@@ -510,13 +523,13 @@ elif menu == "👥 Gestione Anagrafica":
                     c1.markdown(f"<span style='{nome_style} font-weight: bold;'>{r['Nome']} {r['Cognome']}</span>{wa_html}", unsafe_allow_html=True)
                     c1.caption(f"📍 {r['Mansione']}")
                     
-                    # Badge Statistiche sotto il nome
+                    # Badge Statistiche
                     stati_html = f"""
                     <div style="display: flex; gap: 4px; margin-top: 5px;">
-                        <span title="Disponibile" style="background:#29b05c; color:white; padding:1px 6px; border-radius:10px; font-size:10px; font-weight:bold;">{c_disp} D</span>
-                        <span title="Assente" style="background:#000000; color:white; padding:1px 6px; border-radius:10px; font-size:10px; font-weight:bold;">{c_ass} A</span>
-                        <span title="Permesso" style="background:#00008B; color:white; padding:1px 6px; border-radius:10px; font-size:10px; font-weight:bold;">{c_perm} P</span>
-                        <span title="Malattia" style="background:#696969; color:white; padding:1px 6px; border-radius:10px; font-size:10px; font-weight:bold;">{c_mal} M</span>
+                        <span title="Disponibile" style="background:#29b05c; color:white; padding:1px 6px; border-radius:10px; font-size:10px; font-weight:bold;">{r['C_D']} D</span>
+                        <span title="Assente" style="background:#000000; color:white; padding:1px 6px; border-radius:10px; font-size:10px; font-weight:bold;">{r['C_A']} A</span>
+                        <span title="Permesso" style="background:#00008B; color:white; padding:1px 6px; border-radius:10px; font-size:10px; font-weight:bold;">{r['C_P']} P</span>
+                        <span title="Malattia" style="background:#696969; color:white; padding:1px 6px; border-radius:10px; font-size:10px; font-weight:bold;">{r['C_M']} M</span>
                     </div>
                     """
                     c1.markdown(stati_html, unsafe_allow_html=True)
