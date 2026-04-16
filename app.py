@@ -398,94 +398,98 @@ elif menu == "📝 Gestione Riposi Rapida":
         st.success("Modifiche salvate con successo!")
         st.rerun()
 
-# --- 4. AREA DISPONIBILITÀ STAFF (Versione Corretta e Robusta) ---
+# --- 4. AREA DISPONIBILITÀ STAFF (Versione Ultra-Robusta) ---
 elif menu == "📅 Disponibilità Staff":
-    st.title("Area Disponibilità Staff")
-    st.subheader("Inserimento Date e Stati")
+    import datetime  # Import locale per sicurezza
+    import time
     
-    # Verifichiamo che i dati necessari siano caricati
-    if "addetti" not in data or data["addetti"].empty:
-        st.error("Errore: Nessun addetto trovato in anagrafica. Carica prima i collaboratori.")
+    st.title("Area Disponibilità Staff")
+    
+    # Verifichiamo se i dati sono caricati correttamente
+    if "addetti" not in data or data["addetti"] is None:
+        st.error("⚠️ Errore: Non riesco a leggere l'anagrafica addetti.")
+    elif "disp" not in data or data["disp"] is None:
+        st.error("⚠️ Errore: Non riesco a leggere il foglio Disponibilità.")
     else:
-        with st.form("form_disp"):
-            # 1. Creazione lista nomi (Nome + Cognome) per il multiselect
-            # Filtriamo solo gli attivi per non appesantire la lista
-            lista_nomi = sorted([
+        st.subheader("Inserimento Date e Stati")
+        
+        with st.form("form_registrazione_disp"):
+            # Preparazione lista nomi
+            lista_addetti = data["addetti"]
+            
+            # Filtro per mostrare solo i collaboratori attivi
+            addetti_attivi = lista_addetti[lista_addetti["Stato Rapporto"] == "Attivo"]
+            
+            opzioni_nomi = sorted([
                 f"{r['Nome']} {r['Cognome']}" 
-                for i, r in data["addetti"].iterrows() 
-                if str(r.get('Stato Rapporto', '')).strip().lower() == "attivo"
+                for i, r in addetti_attivi.iterrows()
             ])
             
-            scelti = st.multiselect("Seleziona i Collaboratori:", lista_nomi)
+            selected_staff = st.multiselect("Seleziona uno o più Collaboratori:", opzioni_nomi)
             
-            c1, c2 = st.columns(2)
-            # Usiamo datetime.date.today() (assicurati di aver importato datetime in cima allo script)
-            d_inizio = c1.date_input("Dalla data:", datetime.date.today())
-            d_fine = c2.date_input("Alla data (inclusa):", datetime.date.today())
+            col_d1, col_d2 = st.columns(2)
+            # Qui appaiono i calendari
+            data_inizio = col_d1.date_input("Dalla data:", datetime.date.today())
+            data_fine = col_d2.date_input("Alla data (inclusa):", datetime.date.today())
             
-            stato_scelto = st.selectbox("Imposta Stato:", ["Disponibile", "Assente", "Permesso", "Malattia"])
-            note_evento = st.text_input("Note (opzionale):")
+            stato_da_impostare = st.selectbox("Stato da assegnare:", ["Disponibile", "Assente", "Permesso", "Malattia"])
+            note_libere = st.text_input("Note (opzionale):", placeholder="es. Visita medica, turno extra...")
             
-            submit = st.form_submit_button("💾 REGISTRA DISPONIBILITÀ", use_container_width=True)
+            btn_salva = st.form_submit_button("💾 REGISTRA NEL CALENDARIO", use_container_width=True)
             
-            if submit:
-                if not scelti:
-                    st.warning("Seleziona almeno un collaboratore!")
-                elif d_inizio > d_fine:
-                    st.error("La data di inizio non può essere successiva alla data di fine.")
+            if btn_salva:
+                if not selected_staff:
+                    st.warning("Seleziona almeno un nome dalla lista!")
+                elif data_inizio > data_fine:
+                    st.error("La data di fine deve essere successiva a quella di inizio.")
                 else:
                     try:
-                        with st.spinner("Salvataggio in corso..."):
-                            # Generazione dell'elenco delle date tra inizio e fine
-                            date_list = []
-                            curr = d_inizio
-                            while curr <= d_fine:
-                                date_list.append(curr.strftime("%d/%m/%Y"))
-                                curr += datetime.timedelta(days=1)
+                        with st.spinner("Salvataggio in corso... attendi..."):
+                            # Calcolo dei giorni
+                            nuovi_dati = []
+                            delta = data_fine - data_inizio
                             
-                            # Creazione dei nuovi record
-                            nuovi_record = []
-                            for persona in scelti:
-                                # Dividiamo nome e cognome (gestendo eventuali spazi extra)
+                            for persona in selected_staff:
+                                # Separazione sicura Nome e Cognome
                                 parti = persona.rsplit(" ", 1)
-                                nome_p = parti[0]
-                                cognome_p = parti[1] if len(parti) > 1 else ""
+                                n = parti[0]
+                                c = parti[1] if len(parti) > 1 else ""
                                 
-                                for d_str in date_list:
-                                    nuovi_record.append({
-                                        "Nome": nome_p,
-                                        "Cognome": cognome_p,
-                                        "Data": d_str,
-                                        "Stato": stato_scelto,
-                                        "Note": note_evento
+                                for i in range(delta.days + 1):
+                                    giorno = data_inizio + datetime.timedelta(days=i)
+                                    nuovi_dati.append({
+                                        "Nome": n,
+                                        "Cognome": c,
+                                        "Data": giorno.strftime("%d/%m/%Y"),
+                                        "Stato": stato_scelto if 'stato_scelto' in locals() else stato_da_impostare,
+                                        "Note": note_libere
                                     })
                             
-                            nuovi_df = pd.DataFrame(nuovi_record)
+                            # Creazione DataFrame dei nuovi inserimenti
+                            df_nuovi = pd.DataFrame(nuovi_dati)
                             
-                            # Unione con i dati esistenti (evitiamo di perdere lo storico)
-                            old_df = data["disp"].copy()
-                            df_finale = pd.concat([old_df, nuovi_df], ignore_index=True)
+                            # Unione con lo storico esistente
+                            df_storico = data["disp"].copy()
+                            df_aggiornato = pd.concat([df_storico, df_nuovi], ignore_index=True)
                             
-                            # Aggiornamento su Google Sheets
-                            conn.update(worksheet="Disponibilita", data=df_finale)
+                            # Invio a Google Sheets
+                            conn.update(worksheet="Disponibilita", data=df_aggiornato)
                             
-                            # Reset e Successo
+                            # Reset Cache e Messaggio di successo
                             st.cache_data.clear()
-                            st.success(f"Registrate correttamente {len(nuovi_df)} voci!")
-                            time.sleep(1)
+                            st.success(f"✅ Registrazione completata: {len(nuovi_dati)} record inseriti!")
+                            time.sleep(2)
                             st.rerun()
                             
                     except Exception as e:
-                        st.error(f"Errore tecnico durante il salvataggio: {e}")
-                        st.info("Se l'errore persiste, attendi 1 minuto (limite Google API).")
+                        st.error(f"Si è verificato un errore: {e}")
+                        st.info("Consiglio: Se l'errore è 'APIError', aspetta 60 secondi e riprova.")
 
     st.divider()
-    st.subheader("Riepilogo ultimi inserimenti")
+    # Anteprima veloce per vedere se i dati ci sono
     if "disp" in data and not data["disp"].empty:
-        # Mostra le ultime 10 righe registrate per conferma
-        st.dataframe(data["disp"].tail(10), use_container_width=True)
-    else:
-        st.info("Nessuna disponibilità registrata finora.")
+        st.subheader("Ultime registrazioni effettuate")
+        st.dataframe(data["disp"].tail(15), use_container_width=True)
 
 # --- 5. GESTIONE ANAGRAFICA (Versione Ottimizzata anti-Quota 429 con Filtri) ---
 elif menu == "👥 Gestione Anagrafica":
