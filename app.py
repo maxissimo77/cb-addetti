@@ -398,98 +398,25 @@ elif menu == "📝 Gestione Riposi Rapida":
         st.success("Modifiche salvate con successo!")
         st.rerun()
 
-# --- 4. AREA DISPONIBILITÀ STAFF (Versione Ultra-Robusta) ---
-elif menu == "📅 Disponibilità Staff":
-    import datetime  # Import locale per sicurezza
-    import time
-    
-    st.title("Area Disponibilità Staff")
-    
-    # Verifichiamo se i dati sono caricati correttamente
-    if "addetti" not in data or data["addetti"] is None:
-        st.error("⚠️ Errore: Non riesco a leggere l'anagrafica addetti.")
-    elif "disp" not in data or data["disp"] is None:
-        st.error("⚠️ Errore: Non riesco a leggere il foglio Disponibilità.")
-    else:
-        st.subheader("Inserimento Date e Stati")
-        
-        with st.form("form_registrazione_disp"):
-            # Preparazione lista nomi
-            lista_addetti = data["addetti"]
-            
-            # Filtro per mostrare solo i collaboratori attivi
-            addetti_attivi = lista_addetti[lista_addetti["Stato Rapporto"] == "Attivo"]
-            
-            opzioni_nomi = sorted([
-                f"{r['Nome']} {r['Cognome']}" 
-                for i, r in addetti_attivi.iterrows()
-            ])
-            
-            selected_staff = st.multiselect("Seleziona uno o più Collaboratori:", opzioni_nomi)
-            
-            col_d1, col_d2 = st.columns(2)
-            # Qui appaiono i calendari
-            data_inizio = col_d1.date_input("Dalla data:", datetime.date.today())
-            data_fine = col_d2.date_input("Alla data (inclusa):", datetime.date.today())
-            
-            stato_da_impostare = st.selectbox("Stato da assegnare:", ["Disponibile", "Assente", "Permesso", "Malattia"])
-            note_libere = st.text_input("Note (opzionale):", placeholder="es. Visita medica, turno extra...")
-            
-            btn_salva = st.form_submit_button("💾 REGISTRA NEL CALENDARIO", use_container_width=True)
-            
-            if btn_salva:
-                if not selected_staff:
-                    st.warning("Seleziona almeno un nome dalla lista!")
-                elif data_inizio > data_fine:
-                    st.error("La data di fine deve essere successiva a quella di inizio.")
-                else:
-                    try:
-                        with st.spinner("Salvataggio in corso... attendi..."):
-                            # Calcolo dei giorni
-                            nuovi_dati = []
-                            delta = data_fine - data_inizio
-                            
-                            for persona in selected_staff:
-                                # Separazione sicura Nome e Cognome
-                                parti = persona.rsplit(" ", 1)
-                                n = parti[0]
-                                c = parti[1] if len(parti) > 1 else ""
-                                
-                                for i in range(delta.days + 1):
-                                    giorno = data_inizio + datetime.timedelta(days=i)
-                                    nuovi_dati.append({
-                                        "Nome": n,
-                                        "Cognome": c,
-                                        "Data": giorno.strftime("%d/%m/%Y"),
-                                        "Stato": stato_scelto if 'stato_scelto' in locals() else stato_da_impostare,
-                                        "Note": note_libere
-                                    })
-                            
-                            # Creazione DataFrame dei nuovi inserimenti
-                            df_nuovi = pd.DataFrame(nuovi_dati)
-                            
-                            # Unione con lo storico esistente
-                            df_storico = data["disp"].copy()
-                            df_aggiornato = pd.concat([df_storico, df_nuovi], ignore_index=True)
-                            
-                            # Invio a Google Sheets
-                            conn.update(worksheet="Disponibilita", data=df_aggiornato)
-                            
-                            # Reset Cache e Messaggio di successo
-                            st.cache_data.clear()
-                            st.success(f"✅ Registrazione completata: {len(nuovi_dati)} record inseriti!")
-                            time.sleep(2)
-                            st.rerun()
-                            
-                    except Exception as e:
-                        st.error(f"Si è verificato un errore: {e}")
-                        st.info("Consiglio: Se l'errore è 'APIError', aspetta 60 secondi e riprova.")
-
-    st.divider()
-    # Anteprima veloce per vedere se i dati ci sono
-    if "disp" in data and not data["disp"].empty:
-        st.subheader("Ultime registrazioni effettuate")
-        st.dataframe(data["disp"].tail(15), use_container_width=True)
+# --- 4. AREA DISPONIBILITÀ STAFF ---
+elif menu == "📅 Area Disponibilità Staff":
+    st.title("Calendario Disponibilità")
+    df_t = data["addetti"].copy()
+    df_t['Full'] = df_t['Nome'] + " " + df_t['Cognome'] + df_t['Stato Rapporto'].apply(lambda x: " (CESSATO)" if x != "Attivo" else "")
+    sel_dip = st.selectbox("Seleziona dipendente:", df_t['Full'].tolist())
+    row_d = df_t[df_t['Full'] == sel_dip].iloc[0]
+    df_p = data["disp"][(data["disp"]["Nome"] == row_d['Nome']) & (data["disp"]["Cognome"] == row_d['Cognome'])]
+    c_cal = st.columns(5)
+    for idx, m in enumerate([5, 6, 7, 8, 9]):
+        with c_cal[idx]: genera_mini_calendario(df_p, row_d['GiornoRiposoSettimanale'], 2026, m)
+    with st.expander("Modifica Disponibilità / Assenze"):
+        dr = st.date_input("Periodo:", value=[], min_value=data_apertura, max_value=data_chiusura)
+        st_r = st.radio("Stato:", ["Disponibile", "NON Disponibile", "Permesso", "Assente", "Malattia"], horizontal=True)
+        if st.button("Salva Date") and len(dr) == 2:
+            d_list = [str(dr[0] + timedelta(days=x)) for x in range((dr[1]-dr[0]).days + 1)]
+            nuovi = pd.DataFrame([{"Nome": row_d['Nome'], "Cognome": row_d['Cognome'], "Data": d, "Stato": st_r} for d in d_list])
+            old = data["disp"][~((data["disp"]["Nome"] == row_d['Nome']) & (data["disp"]["Cognome"] == row_d['Cognome']) & (data["disp"]["Data"].astype(str).isin(d_list)))]
+            conn.update(worksheet="Disponibilita", data=pd.concat([old, nuovi], ignore_index=True)); st.cache_data.clear(); st.rerun()
 
 # --- 5. GESTIONE ANAGRAFICA (Versione Ottimizzata anti-Quota 429 con Filtri) ---
 elif menu == "👥 Gestione Anagrafica":
