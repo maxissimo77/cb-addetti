@@ -398,81 +398,94 @@ elif menu == "📝 Gestione Riposi Rapida":
         st.success("Modifiche salvate con successo!")
         st.rerun()
 
-# --- 4. AREA DISPONIBILITÀ STAFF (Versione Ottimizzata e Sicura) ---
+# --- 4. AREA DISPONIBILITÀ STAFF (Versione Corretta e Robusta) ---
 elif menu == "📅 Disponibilità Staff":
     st.title("Area Disponibilità Staff")
     st.subheader("Inserimento Date e Stati")
     
-    with st.form("form_disp"):
-        # Selezione multipla degli addetti
-        lista_nomi = sorted([f"{r['Nome']} {r['Cognome']}" for i, r in data["addetti"].iterrows() if r['Stato Rapporto'] == "Attivo"])
-        scelti = st.multiselect("Seleziona i Collaboratori:", lista_nomi)
-        
-        c1, c2 = st.columns(2)
-        d_inizio = c1.date_input("Dalla data:", datetime.date.today())
-        d_fine = c2.date_input("Alla data (inclusa):", datetime.date.today())
-        
-        stato_scelto = st.selectbox("Imposta Stato:", ["Disponibile", "Assente", "Permesso", "Malattia"])
-        note_evento = st.text_input("Note (opzionale):")
-        
-        submit = st.form_submit_button("💾 REGISTRA DISPONIBILITÀ", use_container_width=True)
-        
-        if submit:
-            if not scelti:
-                st.warning("Seleziona almeno un collaboratore!")
-            elif d_inizio > d_fine:
-                st.error("La data di inizio non può essere successiva alla data di fine.")
-            else:
-                try:
-                    # Generazione lista date
-                    date_list = []
-                    curr = d_inizio
-                    while curr <= d_fine:
-                        date_list.append(curr.strftime("%d/%m/%Y"))
-                        curr += datetime.timedelta(days=1)
-                    
-                    nuovi_record = []
-                    for persona in scelti:
-                        nome_p, cognome_p = persona.split(" ", 1)
-                        for d_str in date_list:
-                            nuovi_record.append({
-                                "Nome": nome_p,
-                                "Cognome": cognome_p,
-                                "Data": d_str,
-                                "Stato": stato_scelto,
-                                "Note": note_evento
-                            })
-                    
-                    nuovi_df = pd.DataFrame(nuovi_record)
-                    
-                    # Caricamento dati esistenti per evitare sovrascritture parziali
-                    old_df = data["disp"].copy()
-                    
-                    # Concatenazione e aggiornamento unico su Google Sheets
-                    df_finale = pd.concat([old_df, nuovi_df], ignore_index=True)
-                    
-                    with st.spinner("Salvataggio su Google Sheets in corso..."):
-                        conn.update(worksheet="Disponibilita", data=df_finale)
-                    
-                    # Pulizia cache e reset
-                    st.cache_data.clear()
-                    st.success(f"Registrate {len(nuovi_df)} voci per {len(scelti)} persone!")
-                    time.sleep(1) # Piccolo delay per stabilità
-                    st.rerun()
-                    
-                except Exception as e:
-                    st.error("🚨 Errore di connessione con Google Sheets.")
-                    st.info("Probabilmente hai superato il limite di richieste al minuto. Attendi 60 secondi e riprova.")
-                    # Log tecnico opzionale per debug
-                    # st.exception(e)
+    # Verifichiamo che i dati necessari siano caricati
+    if "addetti" not in data or data["addetti"].empty:
+        st.error("Errore: Nessun addetto trovato in anagrafica. Carica prima i collaboratori.")
+    else:
+        with st.form("form_disp"):
+            # 1. Creazione lista nomi (Nome + Cognome) per il multiselect
+            # Filtriamo solo gli attivi per non appesantire la lista
+            lista_nomi = sorted([
+                f"{r['Nome']} {r['Cognome']}" 
+                for i, r in data["addetti"].iterrows() 
+                if str(r.get('Stato Rapporto', '')).strip().lower() == "attivo"
+            ])
+            
+            scelti = st.multiselect("Seleziona i Collaboratori:", lista_nomi)
+            
+            c1, c2 = st.columns(2)
+            # Usiamo datetime.date.today() (assicurati di aver importato datetime in cima allo script)
+            d_inizio = c1.date_input("Dalla data:", datetime.date.today())
+            d_fine = c2.date_input("Alla data (inclusa):", datetime.date.today())
+            
+            stato_scelto = st.selectbox("Imposta Stato:", ["Disponibile", "Assente", "Permesso", "Malattia"])
+            note_evento = st.text_input("Note (opzionale):")
+            
+            submit = st.form_submit_button("💾 REGISTRA DISPONIBILITÀ", use_container_width=True)
+            
+            if submit:
+                if not scelti:
+                    st.warning("Seleziona almeno un collaboratore!")
+                elif d_inizio > d_fine:
+                    st.error("La data di inizio non può essere successiva alla data di fine.")
+                else:
+                    try:
+                        with st.spinner("Salvataggio in corso..."):
+                            # Generazione dell'elenco delle date tra inizio e fine
+                            date_list = []
+                            curr = d_inizio
+                            while curr <= d_fine:
+                                date_list.append(curr.strftime("%d/%m/%Y"))
+                                curr += datetime.timedelta(days=1)
+                            
+                            # Creazione dei nuovi record
+                            nuovi_record = []
+                            for persona in scelti:
+                                # Dividiamo nome e cognome (gestendo eventuali spazi extra)
+                                parti = persona.rsplit(" ", 1)
+                                nome_p = parti[0]
+                                cognome_p = parti[1] if len(parti) > 1 else ""
+                                
+                                for d_str in date_list:
+                                    nuovi_record.append({
+                                        "Nome": nome_p,
+                                        "Cognome": cognome_p,
+                                        "Data": d_str,
+                                        "Stato": stato_scelto,
+                                        "Note": note_evento
+                                    })
+                            
+                            nuovi_df = pd.DataFrame(nuovi_record)
+                            
+                            # Unione con i dati esistenti (evitiamo di perdere lo storico)
+                            old_df = data["disp"].copy()
+                            df_finale = pd.concat([old_df, nuovi_df], ignore_index=True)
+                            
+                            # Aggiornamento su Google Sheets
+                            conn.update(worksheet="Disponibilita", data=df_finale)
+                            
+                            # Reset e Successo
+                            st.cache_data.clear()
+                            st.success(f"Registrate correttamente {len(nuovi_df)} voci!")
+                            time.sleep(1)
+                            st.rerun()
+                            
+                    except Exception as e:
+                        st.error(f"Errore tecnico durante il salvataggio: {e}")
+                        st.info("Se l'errore persiste, attendi 1 minuto (limite Google API).")
 
     st.divider()
-    st.subheader("Storico Recente (Ultime 10 voci)")
-    if not data["disp"].empty:
-        # Mostriamo le ultime voci caricate
-        st.table(data["disp"].tail(10))
+    st.subheader("Riepilogo ultimi inserimenti")
+    if "disp" in data and not data["disp"].empty:
+        # Mostra le ultime 10 righe registrate per conferma
+        st.dataframe(data["disp"].tail(10), use_container_width=True)
     else:
-        st.write("Nessun dato presente in archivio.")
+        st.info("Nessuna disponibilità registrata finora.")
 
 # --- 5. GESTIONE ANAGRAFICA (Versione Ottimizzata anti-Quota 429 con Filtri) ---
 elif menu == "👥 Gestione Anagrafica":
