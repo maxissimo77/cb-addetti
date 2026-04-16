@@ -418,7 +418,7 @@ elif menu == "📅 Area Disponibilità Staff":
             old = data["disp"][~((data["disp"]["Nome"] == row_d['Nome']) & (data["disp"]["Cognome"] == row_d['Cognome']) & (data["disp"]["Data"].astype(str).isin(d_list)))]
             conn.update(worksheet="Disponibilita", data=pd.concat([old, nuovi], ignore_index=True)); st.cache_data.clear(); st.rerun()
 
-# --- 5. GESTIONE ANAGRAFICA (Versione con Ordinamento Statistiche) ---
+# --- 5. GESTIONE ANAGRAFICA (Versione Ottimizzata anti-Quota 429 con Filtri) ---
 elif menu == "👥 Gestione Anagrafica":
     st.title("Anagrafica")
     
@@ -475,43 +475,59 @@ elif menu == "👥 Gestione Anagrafica":
         
         with t1:
             # --- FILTRI E ORDINAMENTO ---
-            c_f1, c_f2, c_f3 = st.columns([1, 1, 1])
-            filtro_stato = c_f1.radio("Stato:", ["Solo Attivi", "Tutti"], horizontal=True)
-            filtro_man = c_f2.selectbox("Mansione:", ["Tutte"] + lista_postazioni)
-            ordina_per = c_f3.selectbox("Ordina per:", ["Alfabetico", "Più Disponibili", "Più Assenti", "Più Permessi", "Più Malattie"])
+            col_f1, col_f2, col_f3 = st.columns([1, 1, 1])
+            filtro_stato = col_f1.radio("Filtra Stato:", ["Solo Attivi", "Tutti"], horizontal=True, key="f_stato_anag")
+            filtro_man = col_f2.selectbox("Filtra Mansione:", ["Tutte"] + lista_postazioni, key="f_man_anag")
+            ordina_per = col_f3.selectbox("Ordina per:", ["Alfabetico", "Più Disponibili", "Più Assenti", "Più Permessi", "Più Malattie"])
 
-            # Preparazione DataFrame con conteggi per l'ordinamento
+            # --- LOGICA CALCOLO STATISTICHE LOCALE (ZERO API CALLS) ---
             df_display = data["addetti"].copy()
+            df_disp_local = data["disp"].copy()
             
-            # Funzione helper per conteggi massivi
-            def get_counts(r):
-                disp_user = data["disp"][(data["disp"]["Nome"] == r['Nome']) & (data["disp"]["Cognome"] == r['Cognome'])]
-                def count_s(s): return len(disp_user[disp_user["Stato"].str.upper() == s.upper()])
-                return pd.Series([count_s("Disponibile"), count_s("Assente"), count_s("Permesso"), count_s("Malattia")])
+            # Normalizzazione dati per il matching
+            df_disp_local['Nome_Match'] = df_disp_local['Nome'].astype(str).str.upper().str.strip()
+            df_disp_local['Cognome_Match'] = df_disp_local['Cognome'].astype(str).str.upper().str.strip()
+            df_disp_local['Stato_Match'] = df_disp_local['Stato'].astype(str).str.upper().str.strip()
 
-            # Applichiamo i conteggi come colonne temporanee
-            df_display[["C_D", "C_A", "C_P", "C_M"]] = df_display.apply(get_counts, axis=1)
+            # Raggruppamento veloce
+            stats = df_disp_local.groupby(['Nome_Match', 'Cognome_Match', 'Stato_Match']).size().unstack(fill_value=0)
+            
+            # Assicuriamoci che le colonne esistano per evitare KeyError
+            for c in ["DISPONIBILE", "ASSENTE", "PERMESSO", "MALATTIA"]:
+                if c not in stats.columns: stats[c] = 0
 
-            # Filtri
+            # Funzione di mappatura locale
+            def get_local_stats(r):
+                n, c = str(r['Nome']).upper().strip(), str(r['Cognome']).upper().strip()
+                if (n, c) in stats.index:
+                    s_row = stats.loc[(n, c)]
+                    return pd.Series([s_row["DISPONIBILE"], s_row["ASSENTE"], s_row["PERMESSO"], s_row["MALATTIA"]])
+                return pd.Series([0, 0, 0, 0])
+
+            # Creazione colonne per ordinamento
+            df_display[["C_D", "C_A", "C_P", "C_M"]] = df_display.apply(get_local_stats, axis=1)
+
+            # Applicazione Filtri
             if filtro_stato == "Solo Attivi":
                 df_display = df_display[df_display["Stato Rapporto"] == "Attivo"]
             if filtro_man != "Tutte":
                 df_display = df_display[df_display["Mansione"] == filtro_man]
 
-            # Logica di Ordinamento
-            mappa_ordine = {
+            # Applicazione Ordinamento
+            mappa_sort = {
                 "Alfabetico": (["Cognome", "Nome"], [True, True]),
                 "Più Disponibili": (["C_D", "Cognome"], [False, True]),
                 "Più Assenti": (["C_A", "Cognome"], [False, True]),
                 "Più Permessi": (["C_P", "Cognome"], [False, True]),
                 "Più Malattie": (["C_M", "Cognome"], [False, True])
             }
-            sort_cols, sort_asc = mappa_ordine[ordina_per]
-            df_display = df_display.sort_values(by=sort_cols, ascending=sort_asc)
+            s_cols, s_asc = mappa_sort[ordina_per]
+            df_display = df_display.sort_values(by=s_cols, ascending=s_asc)
             
             st.markdown(f"**Risultati trovati: {len(df_display)}**")
             st.divider()
 
+            # Rendering della lista
             for idx, r in df_display.iterrows():
                 with st.container():
                     c1, c2, c3 = st.columns([3, 5, 1])
@@ -523,13 +539,13 @@ elif menu == "👥 Gestione Anagrafica":
                     c1.markdown(f"<span style='{nome_style} font-weight: bold;'>{r['Nome']} {r['Cognome']}</span>{wa_html}", unsafe_allow_html=True)
                     c1.caption(f"📍 {r['Mansione']}")
                     
-                    # Badge Statistiche
+                    # Badge Statistiche dinamici
                     stati_html = f"""
                     <div style="display: flex; gap: 4px; margin-top: 5px;">
-                        <span title="Disponibile" style="background:#29b05c; color:white; padding:1px 6px; border-radius:10px; font-size:10px; font-weight:bold;">{r['C_D']} D</span>
-                        <span title="Assente" style="background:#000000; color:white; padding:1px 6px; border-radius:10px; font-size:10px; font-weight:bold;">{r['C_A']} A</span>
-                        <span title="Permesso" style="background:#00008B; color:white; padding:1px 6px; border-radius:10px; font-size:10px; font-weight:bold;">{r['C_P']} P</span>
-                        <span title="Malattia" style="background:#696969; color:white; padding:1px 6px; border-radius:10px; font-size:10px; font-weight:bold;">{r['C_M']} M</span>
+                        <span title="Disponibile" style="background:#29b05c; color:white; padding:1px 6px; border-radius:10px; font-size:10px; font-weight:bold;">{int(r['C_D'])} D</span>
+                        <span title="Assente" style="background:#000000; color:white; padding:1px 6px; border-radius:10px; font-size:10px; font-weight:bold;">{int(r['C_A'])} A</span>
+                        <span title="Permesso" style="background:#00008B; color:white; padding:1px 6px; border-radius:10px; font-size:10px; font-weight:bold;">{int(r['C_P'])} P</span>
+                        <span title="Malattia" style="background:#696969; color:white; padding:1px 6px; border-radius:10px; font-size:10px; font-weight:bold;">{int(r['C_M'])} M</span>
                     </div>
                     """
                     c1.markdown(stati_html, unsafe_allow_html=True)
