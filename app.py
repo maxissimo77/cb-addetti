@@ -398,25 +398,81 @@ elif menu == "📝 Gestione Riposi Rapida":
         st.success("Modifiche salvate con successo!")
         st.rerun()
 
-# --- 4. AREA DISPONIBILITÀ STAFF ---
-elif menu == "📅 Area Disponibilità Staff":
-    st.title("Calendario Disponibilità")
-    df_t = data["addetti"].copy()
-    df_t['Full'] = df_t['Nome'] + " " + df_t['Cognome'] + df_t['Stato Rapporto'].apply(lambda x: " (CESSATO)" if x != "Attivo" else "")
-    sel_dip = st.selectbox("Seleziona dipendente:", df_t['Full'].tolist())
-    row_d = df_t[df_t['Full'] == sel_dip].iloc[0]
-    df_p = data["disp"][(data["disp"]["Nome"] == row_d['Nome']) & (data["disp"]["Cognome"] == row_d['Cognome'])]
-    c_cal = st.columns(5)
-    for idx, m in enumerate([5, 6, 7, 8, 9]):
-        with c_cal[idx]: genera_mini_calendario(df_p, row_d['GiornoRiposoSettimanale'], 2026, m)
-    with st.expander("Modifica Disponibilità / Assenze"):
-        dr = st.date_input("Periodo:", value=[], min_value=data_apertura, max_value=data_chiusura)
-        st_r = st.radio("Stato:", ["Disponibile", "NON Disponibile", "Permesso", "Assente", "Malattia"], horizontal=True)
-        if st.button("Salva Date") and len(dr) == 2:
-            d_list = [str(dr[0] + timedelta(days=x)) for x in range((dr[1]-dr[0]).days + 1)]
-            nuovi = pd.DataFrame([{"Nome": row_d['Nome'], "Cognome": row_d['Cognome'], "Data": d, "Stato": st_r} for d in d_list])
-            old = data["disp"][~((data["disp"]["Nome"] == row_d['Nome']) & (data["disp"]["Cognome"] == row_d['Cognome']) & (data["disp"]["Data"].astype(str).isin(d_list)))]
-            conn.update(worksheet="Disponibilita", data=pd.concat([old, nuovi], ignore_index=True)); st.cache_data.clear(); st.rerun()
+# --- 4. AREA DISPONIBILITÀ STAFF (Versione Ottimizzata e Sicura) ---
+elif menu == "📅 Disponibilità Staff":
+    st.title("Area Disponibilità Staff")
+    st.subheader("Inserimento Date e Stati")
+    
+    with st.form("form_disp"):
+        # Selezione multipla degli addetti
+        lista_nomi = sorted([f"{r['Nome']} {r['Cognome']}" for i, r in data["addetti"].iterrows() if r['Stato Rapporto'] == "Attivo"])
+        scelti = st.multiselect("Seleziona i Collaboratori:", lista_nomi)
+        
+        c1, c2 = st.columns(2)
+        d_inizio = c1.date_input("Dalla data:", datetime.date.today())
+        d_fine = c2.date_input("Alla data (inclusa):", datetime.date.today())
+        
+        stato_scelto = st.selectbox("Imposta Stato:", ["Disponibile", "Assente", "Permesso", "Malattia"])
+        note_evento = st.text_input("Note (opzionale):")
+        
+        submit = st.form_submit_button("💾 REGISTRA DISPONIBILITÀ", use_container_width=True)
+        
+        if submit:
+            if not scelti:
+                st.warning("Seleziona almeno un collaboratore!")
+            elif d_inizio > d_fine:
+                st.error("La data di inizio non può essere successiva alla data di fine.")
+            else:
+                try:
+                    # Generazione lista date
+                    date_list = []
+                    curr = d_inizio
+                    while curr <= d_fine:
+                        date_list.append(curr.strftime("%d/%m/%Y"))
+                        curr += datetime.timedelta(days=1)
+                    
+                    nuovi_record = []
+                    for persona in scelti:
+                        nome_p, cognome_p = persona.split(" ", 1)
+                        for d_str in date_list:
+                            nuovi_record.append({
+                                "Nome": nome_p,
+                                "Cognome": cognome_p,
+                                "Data": d_str,
+                                "Stato": stato_scelto,
+                                "Note": note_evento
+                            })
+                    
+                    nuovi_df = pd.DataFrame(nuovi_record)
+                    
+                    # Caricamento dati esistenti per evitare sovrascritture parziali
+                    old_df = data["disp"].copy()
+                    
+                    # Concatenazione e aggiornamento unico su Google Sheets
+                    df_finale = pd.concat([old_df, nuovi_df], ignore_index=True)
+                    
+                    with st.spinner("Salvataggio su Google Sheets in corso..."):
+                        conn.update(worksheet="Disponibilita", data=df_finale)
+                    
+                    # Pulizia cache e reset
+                    st.cache_data.clear()
+                    st.success(f"Registrate {len(nuovi_df)} voci per {len(scelti)} persone!")
+                    time.sleep(1) # Piccolo delay per stabilità
+                    st.rerun()
+                    
+                except Exception as e:
+                    st.error("🚨 Errore di connessione con Google Sheets.")
+                    st.info("Probabilmente hai superato il limite di richieste al minuto. Attendi 60 secondi e riprova.")
+                    # Log tecnico opzionale per debug
+                    # st.exception(e)
+
+    st.divider()
+    st.subheader("Storico Recente (Ultime 10 voci)")
+    if not data["disp"].empty:
+        # Mostriamo le ultime voci caricate
+        st.table(data["disp"].tail(10))
+    else:
+        st.write("Nessun dato presente in archivio.")
 
 # --- 5. GESTIONE ANAGRAFICA (Versione Ottimizzata anti-Quota 429 con Filtri) ---
 elif menu == "👥 Gestione Anagrafica":
