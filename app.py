@@ -64,7 +64,7 @@ st.markdown("""
 # --- CONNESSIONE ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# --- CARICAMENTO DATI (Logica Originale) ---
+# --- CARICAMENTO DATI ---
 @st.cache_data(ttl=60)
 def get_all_data():
     try:
