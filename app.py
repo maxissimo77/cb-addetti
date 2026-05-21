@@ -418,7 +418,7 @@ elif menu == "📅 Area Disponibilità Staff":
             old = data["disp"][~((data["disp"]["Nome"] == row_d['Nome']) & (data["disp"]["Cognome"] == row_d['Cognome']) & (data["disp"]["Data"].astype(str).isin(d_list)))]
             conn.update(worksheet="Disponibilita", data=pd.concat([old, nuovi], ignore_index=True)); st.cache_data.clear(); st.rerun()
 
-# --- 5. GESTIONE ANAGRAFICA (Con Campi Formazione Inclusi) ---
+# --- 5. GESTIONE ANAGRAFICA (Con Campi Formazione + Armadietto) ---
 elif menu == "👥 Gestione Anagrafica":
     st.title("Anagrafica")
     
@@ -462,11 +462,14 @@ elif menu == "👥 Gestione Anagrafica":
             email = c_mail.text_input("Email", row['Email'])
             e_data_cess = c_cess.text_input("Data Cessazione (gg/mm/aaaa)", row.get('Data Cessazione', ''))
             
-            c_man, c_rip = st.columns(2)
+            c_man, c_rip, c_arm = st.columns(3)
             em = c_man.selectbox("Mansione", lista_postazioni, index=lista_postazioni.index(row['Mansione']) if row['Mansione'] in lista_postazioni else 0)
             er = c_rip.selectbox("Riposo Settimanale", opzioni_riposo, index=opzioni_riposo.index(row['GiornoRiposoSettimanale']) if row['GiornoRiposoSettimanale'] in opzioni_riposo else 0)
             
-            # --- MODIFICA NUOVI CAMPI FORMAZIONE ---
+            # NUOVO CAMPO ARMADIETTO IN MODIFICA
+            e_armadietto = c_arm.text_input("N° Armadietto", str(row.get('Numero Armadietto', '')))
+            
+            # MODIFICA CAMPI FORMAZIONE
             c_form1, c_form2 = st.columns(2)
             curr_form_val = str(row.get('Formazione', 'No')).strip()
             if curr_form_val not in ["Sì", "No"]: curr_form_val = "No"
@@ -488,6 +491,7 @@ elif menu == "👥 Gestione Anagrafica":
                 data["addetti"].at[idx, 'Data Cessazione'] = e_data_cess
                 data["addetti"].at[idx, 'Formazione'] = e_formazione
                 data["addetti"].at[idx, 'Data Formazione'] = e_data_formazione
+                data["addetti"].at[idx, 'Numero Armadietto'] = e_armadietto.strip()
                 
                 conn.update(worksheet="Addetti", data=data["addetti"])
                 st.cache_data.clear()
@@ -570,7 +574,7 @@ elif menu == "👥 Gestione Anagrafica":
                     info_text = f"📞 {r['Cellulare']} | 📧 {r['Email'] if r['Email'] else 'Nessuna mail'}"
                     c2.markdown(f"<div style='font-size:0.85rem; color:#555;'>{info_text}</div>", unsafe_allow_html=True)
                     
-                    # --- VISUALIZZAZIONE INFO FORMAZIONE ---
+                    # VISUALIZZAZIONE INFO FORMAZIONE
                     is_formato = str(r.get('Formazione', 'No')).strip() == "Sì"
                     dt_form_val = str(r.get('Data Formazione', '')).strip()
                     if is_formato:
@@ -578,12 +582,16 @@ elif menu == "👥 Gestione Anagrafica":
                     else:
                         form_html = f"<span style='background-color:#f8d7da; color:#721c24; padding:2px 8px; border-radius:4px; font-size:0.8rem;'>❌ Non Formato</span>"
                     
+                    # VISUALIZZAZIONE NUMERO ARMADIETTO
+                    n_armadietto = str(r.get('Numero Armadietto', '')).strip()
+                    armadietto_html = f"<span style='background-color:#e2e3e5; color:#383d41; padding:2px 8px; border-radius:4px; font-size:0.8rem; margin-left:5px; font-weight:bold;'>🚪 Armadietto: {f'N° {n_armadietto}' if n_armadietto else 'Non Assegnato'}</span>"
+                    
                     stato_info = f"<b>Stato:</b> {r['Stato Rapporto']}"
                     if r['Stato Rapporto'] != "Attivo" and str(r.get('Data Cessazione', '')).strip() != "":
                         stato_info += f" (dal {r['Data Cessazione']})"
                     
                     c2.markdown(f"<div style='font-size:0.85rem; margin-bottom:5px;'><b>Riposo:</b> {r['GiornoRiposoSettimanale']} | {stato_info}</div>", unsafe_allow_html=True)
-                    c2.markdown(f"<div>{form_html}</div>", unsafe_allow_html=True)
+                    c2.markdown(f"<div>{form_html} {armadietto_html}</div>", unsafe_allow_html=True)
                     
                     if str(r['Contestazioni']).strip() and str(r['Contestazioni']) != "nan":
                         c2.markdown(f"""<div style="background-color:#fff5f5; border-left:3px solid #ff4b4b; padding:5px 10px; margin-top:5px; font-size:0.8rem; color:#c92a2a;">
@@ -612,10 +620,11 @@ elif menu == "👥 Gestione Anagrafica":
                 new_mail = nc5.text_input("Email")
                 new_rip = nc6.selectbox("Riposo Settimanale", opzioni_riposo, index=7)
                 
-                # --- NUOVI CAMPI FORMAZIONE IN AGGIUNTA ---
-                nform1, nform2 = st.columns(2)
+                # NUOVI CAMPI IN AGGIUNTA (Formazione + Armadietto)
+                nform1, nform2, narm = st.columns(3)
                 new_form = nform1.selectbox("Formazione Effettuata?", ["No", "Sì"], index=0)
                 new_data_form = nform2.text_input("Data Formazione (gg/mm/aaaa)", placeholder="Esempio: 15/05/2026")
+                new_armadietto = narm.text_input("N° Armadietto (Opzionale)")
                 
                 if st.form_submit_button("➕ AGGIUNGI ORA"):
                     if new_nome.strip() == "" or new_cognome.strip() == "":
@@ -632,14 +641,14 @@ elif menu == "👥 Gestione Anagrafica":
                             "Data Cessazione": "",
                             "Contestazioni": "",
                             "Formazione": new_form,
-                            "Data Formazione": new_data_form.strip()
+                            "Data Formazione": new_data_form.strip(),
+                            "Numero Armadietto": new_armadietto.strip()
                         }])
                         fused = pd.concat([data["addetti"], nuova_riga], ignore_index=True)
                         conn.update(worksheet="Addetti", data=fused)
                         st.cache_data.clear()
                         st.success("Nuovo collaboratore inserito!")
                         st.rerun()
-
 # --- 6. PIANIFICA FABBISOGNO ---
 elif menu == "⚙️ Pianifica Fabbisogno":
     st.title("Fabbisogno Giornaliero")
