@@ -1,10 +1,3 @@
-Perfetto, ho capito la richiesta. Per aggiungere la possibilità di eliminare un dipendente mantenendo intatto tutto il resto, andremo a inserire un pulsante di cancellazione (un cestino 🗑️) direttamente accanto al pulsante di modifica (✏️) nell'elenco del personale.
-
-Quando l'utente clicca sul cestino, apparirà un popup di conferma per evitare cancellazioni accidentali.
-
-Ecco il codice completo aggiornato. Ho inserito la logica di eliminazione sicura mantenendo inalterata ogni altra singola riga della tua applicazione:
-
-Python
 import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
