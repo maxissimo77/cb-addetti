@@ -418,7 +418,7 @@ elif menu == "📅 Area Disponibilità Staff":
             old = data["disp"][~((data["disp"]["Nome"] == row_d['Nome']) & (data["disp"]["Cognome"] == row_d['Cognome']) & (data["disp"]["Data"].astype(str).isin(d_list)))]
             conn.update(worksheet="Disponibilita", data=pd.concat([old, nuovi], ignore_index=True)); st.cache_data.clear(); st.rerun()
 
-# --- 5. GESTIONE ANAGRAFICA (Versione Ottimizzata anti-Quota 429 con Filtri + Cancellazione) ---
+# --- 5. GESTIONE ANAGRAFICA (Con Campi Formazione Inclusi) ---
 elif menu == "👥 Gestione Anagrafica":
     st.title("Anagrafica")
     
@@ -427,29 +427,24 @@ elif menu == "👥 Gestione Anagrafica":
     if "deleting_id" not in st.session_state:
         st.session_state["deleting_id"] = None
 
-    # --- SOTTO-SEZIONE: CONFERMA CANCELLAZIONE ---
+    # Sezione Conferma Cancellazione
     if st.session_state["deleting_id"] is not None:
         idx_del = st.session_state["deleting_id"]
         row_del = data["addetti"].loc[idx_del]
-        
-        st.warning(f"⚠️ **ATTENZIONE:** Sei sicuro di voler eliminare definitivamente **{row_del['Nome']} {row_del['Cognome']}** dall'anagrafica?")
-        st.info("Questa azione rimuoverà la riga dal database di Google Sheets.")
-        
+        st.warning(f"⚠️ **ATTENZIONE:** Sei sicuro di voler eliminare definitivamente **{row_del['Nome']} {row_del['Cognome']}**?")
         dc1, dc2 = st.columns(2)
-        if dc1.button("🔥 SÌ, CANCELLA DEFINITIVAMENTE", type="primary", use_container_width=True):
-            # Rimuove la riga usando l'indice corrente
+        if dc1.button("🔥 SÌ, CANCELLA", type="primary", use_container_width=True):
             df_aggiornato = data["addetti"].drop(index=idx_del)
             conn.update(worksheet="Addetti", data=df_aggiornato)
             st.cache_data.clear()
             st.session_state["deleting_id"] = None
-            st.success("Collaboratore eliminato con successo!")
+            st.success("Collaboratore eliminato!")
             st.rerun()
-            
         if dc2.button("❌ ANNULLA", use_container_width=True):
             st.session_state["deleting_id"] = None
             st.rerun()
             
-    # --- SOTTO-SEZIONE: MODIFICA PROFILO ---
+    # Sezione Modifica Profilo
     elif st.session_state["editing_id"] is not None:
         idx = st.session_state["editing_id"]
         row = data["addetti"].loc[idx]
@@ -471,6 +466,13 @@ elif menu == "👥 Gestione Anagrafica":
             em = c_man.selectbox("Mansione", lista_postazioni, index=lista_postazioni.index(row['Mansione']) if row['Mansione'] in lista_postazioni else 0)
             er = c_rip.selectbox("Riposo Settimanale", opzioni_riposo, index=opzioni_riposo.index(row['GiornoRiposoSettimanale']) if row['GiornoRiposoSettimanale'] in opzioni_riposo else 0)
             
+            # --- MODIFICA NUOVI CAMPI FORMAZIONE ---
+            c_form1, c_form2 = st.columns(2)
+            curr_form_val = str(row.get('Formazione', 'No')).strip()
+            if curr_form_val not in ["Sì", "No"]: curr_form_val = "No"
+            e_formazione = c_form1.selectbox("Formazione Effettuata?", ["Sì", "No"], index=["Sì", "No"].index(curr_form_val))
+            e_data_formazione = c_form2.text_input("Data Formazione (gg/mm/aaaa)", str(row.get('Data Formazione', '')))
+            
             e_cont = st.text_area("Lettere di Contestazione / Note", row['Contestazioni'])
             
             cb1, cb2 = st.columns(2)
@@ -484,6 +486,8 @@ elif menu == "👥 Gestione Anagrafica":
                 data["addetti"].at[idx, 'GiornoRiposoSettimanale'] = er
                 data["addetti"].at[idx, 'Contestazioni'] = e_cont
                 data["addetti"].at[idx, 'Data Cessazione'] = e_data_cess
+                data["addetti"].at[idx, 'Formazione'] = e_formazione
+                data["addetti"].at[idx, 'Data Formazione'] = e_data_formazione
                 
                 conn.update(worksheet="Addetti", data=data["addetti"])
                 st.cache_data.clear()
@@ -499,29 +503,22 @@ elif menu == "👥 Gestione Anagrafica":
         t1, t2 = st.tabs(["📋 Elenco Personale", "➕ Aggiungi Nuovo"])
         
         with t1:
-            # --- FILTRI E ORDINAMENTO ---
             col_f1, col_f2, col_f3 = st.columns([1, 1, 1])
             filtro_stato = col_f1.radio("Filtra Stato:", ["Solo Attivi", "Tutti"], horizontal=True, key="f_stato_anag")
             filtro_man = col_f2.selectbox("Filtra Mansione:", ["Tutte"] + lista_postazioni, key="f_man_anag")
             ordina_per = col_f3.selectbox("Ordina per:", ["Alfabetico", "Più Disponibili", "Più Assenti", "Più Permessi", "Più Malattie"])
 
-            # --- LOGICA CALCOLO STATISTICHE LOCALE (ZERO API CALLS) ---
             df_display = data["addetti"].copy()
             df_disp_local = data["disp"].copy()
             
-            # Normalizzazione dati per il matching
             df_disp_local['Nome_Match'] = df_disp_local['Nome'].astype(str).str.upper().str.strip()
             df_disp_local['Cognome_Match'] = df_disp_local['Cognome'].astype(str).str.upper().str.strip()
             df_disp_local['Stato_Match'] = df_disp_local['Stato'].astype(str).str.upper().str.strip()
 
-            # Raggruppamento veloce
             stats = df_disp_local.groupby(['Nome_Match', 'Cognome_Match', 'Stato_Match']).size().unstack(fill_value=0)
-            
-            # Assicuriamoci che le colonne esistano per evitare KeyError
             for c in ["DISPONIBILE", "ASSENTE", "PERMESSO", "MALATTIA"]:
                 if c not in stats.columns: stats[c] = 0
 
-            # Funzione di mappatura locale
             def get_local_stats(r):
                 n, c = str(r['Nome']).upper().strip(), str(r['Cognome']).upper().strip()
                 if (n, c) in stats.index:
@@ -529,16 +526,13 @@ elif menu == "👥 Gestione Anagrafica":
                     return pd.Series([s_row["DISPONIBILE"], s_row["ASSENTE"], s_row["PERMESSO"], s_row["MALATTIA"]])
                 return pd.Series([0, 0, 0, 0])
 
-            # Creazione colonne per ordinamento
             df_display[["C_D", "C_A", "C_P", "C_M"]] = df_display.apply(get_local_stats, axis=1)
 
-            # Applicazione Filtri
             if filtro_stato == "Solo Attivi":
                 df_display = df_display[df_display["Stato Rapporto"] == "Attivo"]
             if filtro_man != "Tutte":
                 df_display = df_display[df_display["Mansione"] == filtro_man]
 
-            # Applicazione Ordinamento
             mappa_sort = {
                 "Alfabetico": (["Cognome", "Nome"], [True, True]),
                 "Più Disponibili": (["C_D", "Cognome"], [False, True]),
@@ -552,7 +546,6 @@ elif menu == "👥 Gestione Anagrafica":
             st.markdown(f"**Risultati trovati: {len(df_display)}**")
             st.divider()
 
-            # Rendering della lista
             for idx, r in df_display.iterrows():
                 with st.container():
                     c1, c2, c3 = st.columns([3, 5, 1])
@@ -564,7 +557,6 @@ elif menu == "👥 Gestione Anagrafica":
                     c1.markdown(f"<span style='{nome_style} font-weight: bold;'>{r['Nome']} {r['Cognome']}</span>{wa_html}", unsafe_allow_html=True)
                     c1.caption(f"📍 {r['Mansione']}")
                     
-                    # Badge Statistiche dinamici
                     stati_html = f"""
                     <div style="display: flex; gap: 4px; margin-top: 5px;">
                         <span title="Disponibile" style="background:#29b05c; color:white; padding:1px 6px; border-radius:10px; font-size:10px; font-weight:bold;">{int(r['C_D'])} D</span>
@@ -578,17 +570,25 @@ elif menu == "👥 Gestione Anagrafica":
                     info_text = f"📞 {r['Cellulare']} | 📧 {r['Email'] if r['Email'] else 'Nessuna mail'}"
                     c2.markdown(f"<div style='font-size:0.85rem; color:#555;'>{info_text}</div>", unsafe_allow_html=True)
                     
+                    # --- VISUALIZZAZIONE INFO FORMAZIONE ---
+                    is_formato = str(r.get('Formazione', 'No')).strip() == "Sì"
+                    dt_form_val = str(r.get('Data Formazione', '')).strip()
+                    if is_formato:
+                        form_html = f"<span style='background-color:#d4edda; color:#155724; padding:2px 8px; border-radius:4px; font-size:0.8rem; font-weight:bold;'>🎓 Formato il: {dt_form_val if dt_form_val else 'N.D.'}</span>"
+                    else:
+                        form_html = f"<span style='background-color:#f8d7da; color:#721c24; padding:2px 8px; border-radius:4px; font-size:0.8rem;'>❌ Non Formato</span>"
+                    
                     stato_info = f"<b>Stato:</b> {r['Stato Rapporto']}"
                     if r['Stato Rapporto'] != "Attivo" and str(r.get('Data Cessazione', '')).strip() != "":
                         stato_info += f" (dal {r['Data Cessazione']})"
                     
-                    c2.markdown(f"<div style='font-size:0.85rem;'><b>Riposo:</b> {r['GiornoRiposoSettimanale']} | {stato_info}</div>", unsafe_allow_html=True)
+                    c2.markdown(f"<div style='font-size:0.85rem; margin-bottom:5px;'><b>Riposo:</b> {r['GiornoRiposoSettimanale']} | {stato_info}</div>", unsafe_allow_html=True)
+                    c2.markdown(f"<div>{form_html}</div>", unsafe_allow_html=True)
                     
                     if str(r['Contestazioni']).strip() and str(r['Contestazioni']) != "nan":
                         c2.markdown(f"""<div style="background-color:#fff5f5; border-left:3px solid #ff4b4b; padding:5px 10px; margin-top:5px; font-size:0.8rem; color:#c92a2a;">
                                      🚩 <b>Contestazioni:</b> {r['Contestazioni']}</div>""", unsafe_allow_html=True)
                     
-                    # Colonna pulsanti d'azione (Modifica e il nuovo Elimina)
                     with c3:
                         if st.button("✏️", key=f"btn_list_edit_{idx}"):
                             st.session_state["editing_id"] = idx
@@ -612,6 +612,11 @@ elif menu == "👥 Gestione Anagrafica":
                 new_mail = nc5.text_input("Email")
                 new_rip = nc6.selectbox("Riposo Settimanale", opzioni_riposo, index=7)
                 
+                # --- NUOVI CAMPI FORMAZIONE IN AGGIUNTA ---
+                nform1, nform2 = st.columns(2)
+                new_form = nform1.selectbox("Formazione Effettuata?", ["No", "Sì"], index=0)
+                new_data_form = nform2.text_input("Data Formazione (gg/mm/aaaa)", placeholder="Esempio: 15/05/2026")
+                
                 if st.form_submit_button("➕ AGGIUNGI ORA"):
                     if new_nome.strip() == "" or new_cognome.strip() == "":
                         st.error("Nome e Cognome sono obbligatori.")
@@ -625,7 +630,9 @@ elif menu == "👥 Gestione Anagrafica":
                             "GiornoRiposoSettimanale": new_rip,
                             "Stato Rapporto": "Attivo",
                             "Data Cessazione": "",
-                            "Contestazioni": ""
+                            "Contestazioni": "",
+                            "Formazione": new_form,
+                            "Data Formazione": new_data_form.strip()
                         }])
                         fused = pd.concat([data["addetti"], nuova_riga], ignore_index=True)
                         conn.update(worksheet="Addetti", data=fused)
