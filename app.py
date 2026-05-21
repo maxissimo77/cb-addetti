@@ -116,7 +116,7 @@ def genera_pdf_riposi(mansione, df_mansione, giorni_ita):
         fila = []
         for g in giorni_ita:
             persone = mappa_persone[g]; fila.append(persone[i] if i < len(persone) else "")
-            data_tabella.append(fila)
+        data_tabella.append(fila)
     t = Table(data_tabella, colWidths=[110]*7)
     t.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#1f77b4")),
@@ -296,7 +296,6 @@ if menu == "📊 Dashboard":
                     n = len(s_p)
                     c = "#29b05c" if n >= r and r > 0 else "#ff4b4b" if n < r else "#808080"
                     st.markdown(genera_card(m, c, n, r, s_p), unsafe_allow_html=True)
-
 # --- 2. RIEPILOGO RIPOSI (Layout Corretto e Senza Errori) ---
 elif menu == "📅 Riepilogo Riposi Settimanali":
     st.title("Riposi Settimanali")
@@ -342,7 +341,7 @@ elif menu == "📅 Riepilogo Riposi Settimanali":
             
             st.markdown("<br>", unsafe_allow_html=True)
 
-# --- 3. GESTIONE RIPOSI RAPIDA (Conteggi divisi per Mansione) ---
+     # --- 3. GESTIONE RIPOSI RAPIDA (Conteggi divisi per Mansione) ---
 elif menu == "📝 Gestione Riposi Rapida":
     st.title("Modifica Rapida Riposi")
     st.info("I box mostrano quanti addetti riposano ogni giorno per la specifica mansione.")
@@ -419,39 +418,14 @@ elif menu == "📅 Area Disponibilità Staff":
             old = data["disp"][~((data["disp"]["Nome"] == row_d['Nome']) & (data["disp"]["Cognome"] == row_d['Cognome']) & (data["disp"]["Data"].astype(str).isin(d_list)))]
             conn.update(worksheet="Disponibilita", data=pd.concat([old, nuovi], ignore_index=True)); st.cache_data.clear(); st.rerun()
 
-# --- 5. GESTIONE ANAGRAFICA (Versione Ottimizzata anti-Quota 429 con Filtri + Cancellazione) ---
+# --- 5. GESTIONE ANAGRAFICA (Versione Ottimizzata anti-Quota 429 con Filtri) ---
 elif menu == "👥 Gestione Anagrafica":
     st.title("Anagrafica")
     
     if "editing_id" not in st.session_state: 
         st.session_state["editing_id"] = None
-    if "deleting_id" not in st.session_state:
-        st.session_state["deleting_id"] = None
 
-    # --- SOTTO-SEZIONE: CONFERMA CANCELLAZIONE ---
-    if st.session_state["deleting_id"] is not None:
-        idx_del = st.session_state["deleting_id"]
-        row_del = data["addetti"].loc[idx_del]
-        
-        st.warning(f"⚠️ **ATTENZIONE:** Sei sicuro di voler eliminare definitivamente **{row_del['Nome']} {row_del['Cognome']}** dall'anagrafica?")
-        st.info("Questa azione rimuoverà la riga dal database di Google Sheets.")
-        
-        dc1, dc2 = st.columns(2)
-        if dc1.button("🔥 SÌ, CANCELLA DEFINITIVAMENTE", type="primary", use_container_width=True):
-            # Rimuove la riga usando l'indice corrente
-            df_aggiornato = data["addetti"].drop(index=idx_del)
-            conn.update(worksheet="Addetti", data=df_aggiornato)
-            st.cache_data.clear()
-            st.session_state["deleting_id"] = None
-            st.success("Collaboratore eliminato con successo!")
-            st.rerun()
-            
-        if dc2.button("❌ ANNULLA", use_container_width=True):
-            st.session_state["deleting_id"] = None
-            st.rerun()
-            
-    # --- SOTTO-SEZIONE: MODIFICA PROFILO ---
-    elif st.session_state["editing_id"] is not None:
+    if st.session_state["editing_id"] is not None:
         idx = st.session_state["editing_id"]
         row = data["addetti"].loc[idx]
         
@@ -587,16 +561,11 @@ elif menu == "👥 Gestione Anagrafica":
                     
                     if str(r['Contestazioni']).strip() and str(r['Contestazioni']) != "nan":
                         c2.markdown(f"""<div style="background-color:#fff5f5; border-left:3px solid #ff4b4b; padding:5px 10px; margin-top:5px; font-size:0.8rem; color:#c92a2a;">
-                                     🚩 <b>Contestazioni:</b> {r['Contestazioni']}</div>""", unsafe_allow_html=True)
+                                    🚩 <b>Contestazioni:</b> {r['Contestazioni']}</div>""", unsafe_allow_html=True)
                     
-                    # Colonna pulsanti d'azione (Modifica e il nuovo Elimina)
-                    with c3:
-                        if st.button("✏️", key=f"btn_list_edit_{idx}"):
-                            st.session_state["editing_id"] = idx
-                            st.rerun()
-                        if st.button("🗑️", key=f"btn_list_del_{idx}"):
-                            st.session_state["deleting_id"] = idx
-                            st.rerun()
+                    if c3.button("✏️", key=f"btn_list_edit_{idx}"):
+                        st.session_state["editing_id"] = idx
+                        st.rerun()
                     
                     st.divider()
 
@@ -606,30 +575,62 @@ elif menu == "👥 Gestione Anagrafica":
                 nc1, nc2, nc3 = st.columns(3)
                 new_nome = nc1.text_input("Nome")
                 new_cognome = nc2.text_input("Cognome")
-                new_man = nc3.selectbox("Mansione", lista_postazioni)
+                new_mansione = nc3.selectbox("Mansione", lista_postazioni)
+                new_tel = nc1.text_input("Cellulare")
+                new_mail = nc2.text_input("Email")
+                new_riposo = nc3.selectbox("Giorno di Riposo", opzioni_riposo)
+                new_cont = st.text_area("Note / Contestazioni iniziali")
                 
-                nc4, nc5, nc6 = st.columns(3)
-                new_tel = nc4.text_input("Cellulare")
-                new_mail = nc5.text_input("Email")
-                new_rip = nc6.selectbox("Riposo Settimanale", opzioni_riposo, index=7)
-                
-                if st.form_submit_button("➕ AGGIUNGI ORA"):
-                    if new_nome.strip() == "" or new_cognome.strip() == "":
-                        st.error("Nome e Cognome sono obbligatori.")
-                    else:
-                        nuova_riga = pd.DataFrame([{
-                            "Nome": new_nome.strip(),
-                            "Cognome": new_cognome.strip(),
-                            "Mansione": new_man,
-                            "Cellulare": new_tel.strip(),
-                            "Email": new_mail.strip(),
-                            "GiornoRiposoSettimanale": new_rip,
-                            "Stato Rapporto": "Attivo",
-                            "Data Cessazione": "",
-                            "Contestazioni": ""
+                if st.form_submit_button("➕ AGGIUNGI COLLABORATORE", use_container_width=True):
+                    if new_nome and new_cognome:
+                        new_data = pd.DataFrame([{
+                            "Nome": new_nome, "Cognome": new_cognome, 
+                            "Mansione": new_mansione, "GiornoRiposoSettimanale": new_riposo,
+                            "Contestazioni": new_cont, "Stato Rapporto": "Attivo",
+                            "Data Cessazione": "", "Cellulare": new_tel, "Email": new_mail
                         }])
-                        fused = pd.concat([data["addetti"], nuova_riga], ignore_index=True)
-                        conn.update(worksheet="Addetti", data=fused)
+                        updated_df = pd.concat([data["addetti"], new_data], ignore_index=True)
+                        conn.update(worksheet="Addetti", data=updated_df)
                         st.cache_data.clear()
-                        st.success("Nuovo collaboratore inserito!")
+                        st.success(f"{new_nome} aggiunto con successo!")
                         st.rerun()
+
+# --- 6. PIANIFICA FABBISOGNO ---
+elif menu == "⚙️ Pianifica Fabbisogno":
+    st.title("Fabbisogno Giornaliero")
+    dr = st.date_input("Periodo:", value=[])
+    if len(dr) == 2:
+        date_list = [dr[0] + timedelta(days=x) for x in range((dr[1]-dr[0]).days + 1)]
+        f_inputs = {p: st.number_input(f"{p}:", min_value=0) for p in lista_postazioni}
+        if st.button("💾 Salva Fabbisogno"):
+            new_r = [{"Data": str(d), "Mansione": p, "Quantita": v} for d in date_list for p, v in f_inputs.items()]
+            old_d = data["fabbisogno"][~data["fabbisogno"]["Data"].astype(str).isin([str(d) for d in date_list])]
+            conn.update(worksheet="Fabbisogno", data=pd.concat([old_d, pd.DataFrame(new_r)], ignore_index=True)); st.cache_data.clear(); st.success("Fabbisogno aggiornato!"); st.rerun()
+
+# --- 7. GESTIONE POSTAZIONI ---
+elif menu == "🚩 Gestione Postazioni":
+    st.title("Postazioni")
+    np = st.text_input("Nuova Postazione")
+    if st.button("Aggiungi"):
+        conn.update(worksheet="Postazioni", data=pd.concat([data["postazioni"], pd.DataFrame([{"Nome Postazione": np}])], ignore_index=True)); st.cache_data.clear(); st.rerun()
+    st.table(data["postazioni"])
+
+# --- 8. IMPOSTAZIONI STAGIONE ---
+elif menu == "⚙️ Impostazioni Stagione":
+    st.title("Configurazione")
+    with st.form("config"):
+        na, nc = st.date_input("Apertura:", data_apertura), st.date_input("Chiusura:", data_chiusura)
+        if st.form_submit_button("Salva"):
+            data["config"].loc[data["config"]["Ruolo"] == "Apertura", "Password"] = str(na)
+            data["config"].loc[data["config"]["Ruolo"] == "Chiusura", "Password"] = str(nc)
+            conn.update(worksheet="Config", data=data["config"]); st.cache_data.clear(); st.rerun()
+
+# --- 9. GESTIONE PASSWORD ---
+elif menu == "🔑 Gestione Password":
+    st.title("Sicurezza")
+    with st.form("pwd"):
+        ap, up = st.text_input("Admin", value=admin_pwd), st.text_input("User", value=user_pwd)
+        if st.form_submit_button("Aggiorna Password"):
+            data["config"].loc[data["config"]["Ruolo"]=="Admin", "Password"] = ap
+            data["config"].loc[data["config"]["Ruolo"]=="User", "Password"] = up
+            conn.update(worksheet="Config", data=data["config"]); st.cache_data.clear(); st.success("Password salvate!"); st.rerun()
