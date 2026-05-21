@@ -418,14 +418,39 @@ elif menu == "📅 Area Disponibilità Staff":
             old = data["disp"][~((data["disp"]["Nome"] == row_d['Nome']) & (data["disp"]["Cognome"] == row_d['Cognome']) & (data["disp"]["Data"].astype(str).isin(d_list)))]
             conn.update(worksheet="Disponibilita", data=pd.concat([old, nuovi], ignore_index=True)); st.cache_data.clear(); st.rerun()
 
-# --- 5. GESTIONE ANAGRAFICA (Versione Ottimizzata anti-Quota 429 con Filtri) ---
+# --- 5. GESTIONE ANAGRAFICA (Versione Ottimizzata anti-Quota 429 con Filtri + Cancellazione) ---
 elif menu == "👥 Gestione Anagrafica":
     st.title("Anagrafica")
     
     if "editing_id" not in st.session_state: 
         st.session_state["editing_id"] = None
+    if "deleting_id" not in st.session_state:
+        st.session_state["deleting_id"] = None
 
-    if st.session_state["editing_id"] is not None:
+    # --- SOTTO-SEZIONE: CONFERMA CANCELLAZIONE ---
+    if st.session_state["deleting_id"] is not None:
+        idx_del = st.session_state["deleting_id"]
+        row_del = data["addetti"].loc[idx_del]
+        
+        st.warning(f"⚠️ **ATTENZIONE:** Sei sicuro di voler eliminare definitivamente **{row_del['Nome']} {row_del['Cognome']}** dall'anagrafica?")
+        st.info("Questa azione rimuoverà la riga dal database di Google Sheets.")
+        
+        dc1, dc2 = st.columns(2)
+        if dc1.button("🔥 SÌ, CANCELLA DEFINITIVAMENTE", type="primary", use_container_width=True):
+            # Rimuove la riga usando l'indice corrente
+            df_aggiornato = data["addetti"].drop(index=idx_del)
+            conn.update(worksheet="Addetti", data=df_aggiornato)
+            st.cache_data.clear()
+            st.session_state["deleting_id"] = None
+            st.success("Collaboratore eliminato con successo!")
+            st.rerun()
+            
+        if dc2.button("❌ ANNULLA", use_container_width=True):
+            st.session_state["deleting_id"] = None
+            st.rerun()
+            
+    # --- SOTTO-SEZIONE: MODIFICA PROFILO ---
+    elif st.session_state["editing_id"] is not None:
         idx = st.session_state["editing_id"]
         row = data["addetti"].loc[idx]
         
@@ -561,11 +586,16 @@ elif menu == "👥 Gestione Anagrafica":
                     
                     if str(r['Contestazioni']).strip() and str(r['Contestazioni']) != "nan":
                         c2.markdown(f"""<div style="background-color:#fff5f5; border-left:3px solid #ff4b4b; padding:5px 10px; margin-top:5px; font-size:0.8rem; color:#c92a2a;">
-                                    🚩 <b>Contestazioni:</b> {r['Contestazioni']}</div>""", unsafe_allow_html=True)
+                                     🚩 <b>Contestazioni:</b> {r['Contestazioni']}</div>""", unsafe_allow_html=True)
                     
-                    if c3.button("✏️", key=f"btn_list_edit_{idx}"):
-                        st.session_state["editing_id"] = idx
-                        st.rerun()
+                    # Colonna pulsanti d'azione (Modifica e il nuovo Elimina)
+                    with c3:
+                        if st.button("✏️", key=f"btn_list_edit_{idx}"):
+                            st.session_state["editing_id"] = idx
+                            st.rerun()
+                        if st.button("🗑️", key=f"btn_list_del_{idx}"):
+                            st.session_state["deleting_id"] = idx
+                            st.rerun()
                     
                     st.divider()
 
@@ -575,24 +605,32 @@ elif menu == "👥 Gestione Anagrafica":
                 nc1, nc2, nc3 = st.columns(3)
                 new_nome = nc1.text_input("Nome")
                 new_cognome = nc2.text_input("Cognome")
-                new_mansione = nc3.selectbox("Mansione", lista_postazioni)
-                new_tel = nc1.text_input("Cellulare")
-                new_mail = nc2.text_input("Email")
-                new_riposo = nc3.selectbox("Giorno di Riposo", opzioni_riposo)
-                new_cont = st.text_area("Note / Contestazioni iniziali")
+                new_man = nc3.selectbox("Mansione", lista_postazioni)
                 
-                if st.form_submit_button("➕ AGGIUNGI COLLABORATORE", use_container_width=True):
-                    if new_nome and new_cognome:
-                        new_data = pd.DataFrame([{
-                            "Nome": new_nome, "Cognome": new_cognome, 
-                            "Mansione": new_mansione, "GiornoRiposoSettimanale": new_riposo,
-                            "Contestazioni": new_cont, "Stato Rapporto": "Attivo",
-                            "Data Cessazione": "", "Cellulare": new_tel, "Email": new_mail
+                nc4, nc5, nc6 = st.columns(3)
+                new_tel = nc4.text_input("Cellulare")
+                new_mail = nc5.text_input("Email")
+                new_rip = nc6.selectbox("Riposo Settimanale", opzioni_riposo, index=7)
+                
+                if st.form_submit_button("➕ AGGIUNGI ORA"):
+                    if new_nome.strip() == "" or new_cognome.strip() == "":
+                        st.error("Nome e Cognome sono obbligatori.")
+                    else:
+                        nuova_riga = pd.DataFrame([{
+                            "Nome": new_nome.strip(),
+                            "Cognome": new_cognome.strip(),
+                            "Mansione": new_man,
+                            "Cellulare": new_tel.strip(),
+                            "Email": new_mail.strip(),
+                            "GiornoRiposoSettimanale": new_rip,
+                            "Stato Rapporto": "Attivo",
+                            "Data Cessazione": "",
+                            "Contestazioni": ""
                         }])
-                        updated_df = pd.concat([data["addetti"], new_data], ignore_index=True)
-                        conn.update(worksheet="Addetti", data=updated_df)
+                        fused = pd.concat([data["addetti"], nuova_riga], ignore_index=True)
+                        conn.update(worksheet="Addetti", data=fused)
                         st.cache_data.clear()
-                        st.success(f"{new_nome} aggiunto con successo!")
+                        st.success("Nuovo collaboratore inserito!")
                         st.rerun()
 
 # --- 6. PIANIFICA FABBISOGNO ---
