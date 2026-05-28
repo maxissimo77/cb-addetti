@@ -163,16 +163,18 @@ default_date = oggi if data_apertura <= oggi <= data_chiusura else data_apertura
 mappa_giorni = {"Lunedì": 0, "Martedì": 1, "Mercoledì": 2, "Giovedì": 3, "Venerdì": 4, "Sabato": 5, "Domenica": 6}
 giorni_ita = list(mappa_giorni.keys()); opzioni_riposo = giorni_ita + ["Non Definito"]
 lista_postazioni = data["postazioni"]["Nome Postazione"].dropna().unique().tolist() if not data["postazioni"].empty else ["Generico"]
-# --- NUOVA LOGICA: Calcolo del primo Lunedì dopo l'apertura ---
-# weekday() restituisce 0 per Lunedì, 1 per Martedì, ecc.
+
+# -------------------------------------------------------------------------
+# [NUOVO INSERIMENTO 1] CALCOLO DEL PRIMO LUNEDÌ DOPO L'APERTURA
+# -------------------------------------------------------------------------
 giorni_al_prossimo_lunedi = (0 - data_apertura.weekday()) % 7
-# Se l'apertura è già di Lunedì, % 7 restituirà 0. Se vuoi che parta comunque dal lunedì della settimana successiva, useremo una logica condizionale:
 if giorni_al_prossimo_lunedi == 0:
     primo_lunedi_effettivo = data_apertura
 else:
     primo_lunedi_effettivo = data_apertura + timedelta(days=giorni_al_prossimo_lunedi)
+# -------------------------------------------------------------------------
 
-# --- FUNZIONE CALENDARIO (Aggiornata con decorrenza Riposo) ---
+# --- FUNZIONE CALENDARIO (VERSIONE AGGIORNATA) ---
 def genera_mini_calendario(df_persona, riposo_fisso, anno, mese):
     nomi_mesi_ita = {5: "MAGGIO", 6: "GIUGNO", 7: "LUGLIO", 8: "AGOSTO", 9: "SETTEMBRE"}
     st.markdown(f"<div style='text-align: center; background-color: #1f77b4; color: white; padding: 5px; border-radius: 5px; margin-bottom: 5px;'><b>{nomi_mesi_ita.get(mese, 'Mese')}</b></div>", unsafe_allow_html=True)
@@ -193,7 +195,7 @@ def genera_mini_calendario(df_persona, riposo_fisso, anno, mese):
                 else:
                     stato_row = df_persona[df_persona["Data"].astype(str).str.contains(d_str, na=False)]
                     
-                    # MODIFICA QUI: Il riposo fisso si attiva SOLO dal primo lunedì dopo l'apertura in poi
+                    # LOGICA AGGIORNATA: Il riposo si attiva solo se curr_d >= primo_lunedi_effettivo
                     if i == idx_riposo_fisso and curr_d >= primo_lunedi_effettivo:
                         bg, tx = "#ffa500", "white"
                         if not stato_row.empty:
@@ -224,7 +226,7 @@ if st.sidebar.button("Logout"):
     for key in list(st.session_state.keys()): del st.session_state[key]
     st.rerun()
 
-# --- 1. DASHBOARD (Versione Pulita con Radio sotto Bagnini) ---
+# --- 1. DASHBOARD (VERSIONE AGGIORNATA) ---
 if menu == "📊 Dashboard":
     st.title("Situazione giornaliera")
     input_d = st.date_input("Inizio visualizzazione (settimana):", default_date)
@@ -272,7 +274,13 @@ if menu == "📊 Dashboard":
                 staff_base = data["addetti"][data["addetti"]["Stato Rapporto"] == "Attivo"].copy()
                 staff_base["ID_UNICO"] = staff_base["Nome"].apply(norm) + staff_base["Cognome"].apply(norm)
                 staff_base["RIPOSO_NORM"] = staff_base["GiornoRiposoSettimanale"].apply(norm)
-                presenti_effettivi = staff_base[(staff_base["RIPOSO_NORM"] != giorno_sett_oggi) & (~staff_base["ID_UNICO"].isin(lista_nera_nomi))]
+                
+                # LOGICA AGGIORNATA: Il riposo toglie personale solo se siamo dal primo lunedì in poi
+                if d_tab >= primo_lunedi_effettivo:
+                    presenti_effettivi = staff_base[(staff_base["RIPOSO_NORM"] != giorno_sett_oggi) & (~staff_base["ID_UNICO"].isin(lista_nera_nomi))]
+                else:
+                    # Prima del primo lunedì della stagione, il riposo automatico viene ignorato
+                    presenti_effettivi = staff_base[~staff_base["ID_UNICO"].isin(lista_nera_nomi)]
 
                 # Layout a 3 Colonne
                 col1, col2, col3 = st.columns(3)
