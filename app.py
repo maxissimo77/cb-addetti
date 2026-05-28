@@ -163,8 +163,16 @@ default_date = oggi if data_apertura <= oggi <= data_chiusura else data_apertura
 mappa_giorni = {"Lunedì": 0, "Martedì": 1, "Mercoledì": 2, "Giovedì": 3, "Venerdì": 4, "Sabato": 5, "Domenica": 6}
 giorni_ita = list(mappa_giorni.keys()); opzioni_riposo = giorni_ita + ["Non Definito"]
 lista_postazioni = data["postazioni"]["Nome Postazione"].dropna().unique().tolist() if not data["postazioni"].empty else ["Generico"]
+# --- NUOVA LOGICA: Calcolo del primo Lunedì dopo l'apertura ---
+# weekday() restituisce 0 per Lunedì, 1 per Martedì, ecc.
+giorni_al_prossimo_lunedi = (0 - data_apertura.weekday()) % 7
+# Se l'apertura è già di Lunedì, % 7 restituirà 0. Se vuoi che parta comunque dal lunedì della settimana successiva, useremo una logica condizionale:
+if giorni_al_prossimo_lunedi == 0:
+    primo_lunedi_effettivo = data_apertura
+else:
+    primo_lunedi_effettivo = data_apertura + timedelta(days=giorni_al_prossimo_lunedi)
 
-# --- FUNZIONE CALENDARIO ---
+# --- FUNZIONE CALENDARIO (Aggiornata con decorrenza Riposo) ---
 def genera_mini_calendario(df_persona, riposo_fisso, anno, mese):
     nomi_mesi_ita = {5: "MAGGIO", 6: "GIUGNO", 7: "LUGLIO", 8: "AGOSTO", 9: "SETTEMBRE"}
     st.markdown(f"<div style='text-align: center; background-color: #1f77b4; color: white; padding: 5px; border-radius: 5px; margin-bottom: 5px;'><b>{nomi_mesi_ita.get(mese, 'Mese')}</b></div>", unsafe_allow_html=True)
@@ -184,7 +192,9 @@ def genera_mini_calendario(df_persona, riposo_fisso, anno, mese):
                 if not is_open: bg, tx, label = "#f0f0f0", "#bfbfbf", f"<span style='text-decoration: line-through;'>{day}</span>"
                 else:
                     stato_row = df_persona[df_persona["Data"].astype(str).str.contains(d_str, na=False)]
-                    if i == idx_riposo_fisso:
+                    
+                    # MODIFICA QUI: Il riposo fisso si attiva SOLO dal primo lunedì dopo l'apertura in poi
+                    if i == idx_riposo_fisso and curr_d >= primo_lunedi_effettivo:
                         bg, tx = "#ffa500", "white"
                         if not stato_row.empty:
                             s_val = str(stato_row["Stato"].iloc[0]).upper()
