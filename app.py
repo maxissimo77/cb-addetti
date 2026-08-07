@@ -76,15 +76,30 @@ def get_all_data():
             "config": conn.read(worksheet="Config")
         }
         res["addetti"] = res["addetti"].astype(object)
+        
+        # Inizializzazione sicura di tutti i campi dell'anagrafica
         if "Contestazioni" in res["addetti"].columns:
             res["addetti"]["Contestazioni"] = res["addetti"]["Contestazioni"].astype(str).replace(['nan', 'None', '<NA>'], '')
         else: res["addetti"]["Contestazioni"] = ""
+        
         if "Stato Rapporto" not in res["addetti"].columns: res["addetti"]["Stato Rapporto"] = "Attivo"
         if "Data Cessazione" not in res["addetti"].columns: res["addetti"]["Data Cessazione"] = ""
+        
         if "Cellulare" not in res["addetti"].columns: res["addetti"]["Cellulare"] = ""
         else: res["addetti"]["Cellulare"] = res["addetti"]["Cellulare"].astype(str).replace(r'\.0$', '', regex=True).replace(['nan', 'None', '<NA>'], '')
+        
         if "Email" not in res["addetti"].columns: res["addetti"]["Email"] = ""
         else: res["addetti"]["Email"] = res["addetti"]["Email"].astype(str).replace(['nan', 'None', '<NA>'], '')
+        
+        if "Formazione" not in res["addetti"].columns: res["addetti"]["Formazione"] = "No"
+        else: res["addetti"]["Formazione"] = res["addetti"]["Formazione"].astype(str).replace(['nan', 'None', '<NA>'], 'No')
+        
+        if "Data Formazione" not in res["addetti"].columns: res["addetti"]["Data Formazione"] = ""
+        else: res["addetti"]["Data Formazione"] = res["addetti"]["Data Formazione"].astype(str).replace(['nan', 'None', '<NA>'], '')
+        
+        if "Numero Armadietto" not in res["addetti"].columns: res["addetti"]["Numero Armadietto"] = ""
+        else: res["addetti"]["Numero Armadietto"] = res["addetti"]["Numero Armadietto"].astype(str).replace(r'\.0$', '', regex=True).replace(['nan', 'None', '<NA>'], '')
+        
         return res
     except Exception as e:
         st.error(f"⚠️ Errore di connessione: {e}"); st.stop()
@@ -100,7 +115,7 @@ def format_wa_link(row):
     msg_encoded = urllib.parse.quote(msg)
     return f"https://wa.me/{tel}?text={msg_encoded}"
 
-# --- FUNZIONE GENERAZIONE PDF (Originale) ---
+# --- FUNZIONE GENERAZIONE PDF ---
 def genera_pdf_riposi(mansione, df_mansione, giorni_ita):
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=18)
@@ -290,7 +305,7 @@ if menu == "📊 Dashboard":
                         c = "#29b05c" if n >= r and r > 0 else "#ff4b4b" if n < r else "#808080"
                         st.markdown(genera_card(m, c, n, r, s_p), unsafe_allow_html=True)
 
-                # Visualizzazione speciale per gli Ammalati del giorno
+                # Visualizzazione Ammalati del giorno
                 st.markdown("---")
                 st.markdown("### 🤒 Ammalati della giornata")
                 if not ammalati_oggi.empty:
@@ -447,7 +462,7 @@ elif menu == "⚙️ Pianifica Fabbisogno":
         st.success(f"Fabbisogno aggiornato con successo dal {start_d} al {end_d}!")
         st.rerun()
 
-# --- 6. GESTIONE ANAGRAFICA ---
+# --- 6. GESTIONE ANAGRAFICA (ORIGINALE RIPRISTINATA AL 100%) ---
 elif menu == "👥 Gestione Anagrafica":
     st.title("Anagrafica")
     
@@ -584,6 +599,14 @@ elif menu == "👥 Gestione Anagrafica":
                     c1.markdown(f"<span style='{nome_style} font-weight: bold;'>{r['Nome']} {r['Cognome']}</span>{wa_html}", unsafe_allow_html=True)
                     c1.caption(f"📍 {r['Mansione']}")
                     
+                    # Dettagli aggiuntivi visualizzati nell'elenco
+                    info_extra = []
+                    if r.get('Cellulare'): info_extra.append(f"📞 {r['Cellulare']}")
+                    if r.get('Numero Armadietto'): info_extra.append(f"🚪 Arm. {r['Numero Armadietto']}")
+                    if r.get('Formazione') == "Sì": info_extra.append("✅ Formato")
+                    if info_extra:
+                        c1.markdown(f"<span style='font-size:0.8rem; color:#666;'>{' | '.join(info_extra)}</span>", unsafe_allow_html=True)
+
                     c2.markdown(f"""
                     <div style="display: flex; gap: 4px; margin-top: 5px;">
                         <span title="Disponibile" style="background:#29b05c; color:white; padding:1px 6px; border-radius:10px; font-size:10px; font-weight:bold;">{int(r['C_D'])} D</span>
@@ -619,6 +642,10 @@ elif menu == "👥 Gestione Anagrafica":
                 new_man = ca6.selectbox("Mansione", lista_postazioni)
                 new_rip = ca7.selectbox("Riposo Settimanale", opzioni_riposo)
                 
+                ca8, ca9 = st.columns(2)
+                new_form = ca8.selectbox("Formazione Effettuata?", ["No", "Sì"])
+                new_d_form = ca9.text_input("Data Formazione (gg/mm/aaaa)")
+                
                 if st.form_submit_button("➕ Salva Collaboratore", type="primary", use_container_width=True):
                     if new_n and new_c:
                         nuova_persona = pd.DataFrame([{
@@ -631,8 +658,8 @@ elif menu == "👥 Gestione Anagrafica":
                             "Email": new_email.strip(),
                             "Contestazioni": "",
                             "Data Cessazione": "",
-                            "Formazione": "No",
-                            "Data Formazione": "",
+                            "Formazione": new_form,
+                            "Data Formazione": new_d_form.strip(),
                             "Numero Armadietto": new_arm.strip()
                         }])
                         conn.update(worksheet="Addetti", data=pd.concat([data["addetti"], nuova_persona], ignore_index=True))
