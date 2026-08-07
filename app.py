@@ -624,6 +624,16 @@ elif menu == "👥 Gestione Anagrafica":
                         if cb_d.button("🗑️", key=f"btn_del_{idx}"):
                             st.session_state["deleting_id"] = idx
                             st.rerun()
+
+                    # VISUALIZZAZIONE CONTESTAZIONI E NOTE (Se presenti)
+                    contestazioni_txt = str(r.get('Contestazioni', '')).strip()
+                    if contestazioni_txt and contestazioni_txt not in ['nan', 'None', '<NA>', '']:
+                        st.markdown(f"""
+                        <div style="background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 8px 12px; margin-top: 8px; border-radius: 4px; font-size: 0.85rem; color: #856404;">
+                            <b>⚠️ Contestazioni / Note:</b> {contestazioni_txt}
+                        </div>
+                        """, unsafe_allow_html=True)
+
                 st.divider()
 
         with t2:
