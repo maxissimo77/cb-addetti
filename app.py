@@ -462,7 +462,7 @@ elif menu == "⚙️ Pianifica Fabbisogno":
         st.success(f"Fabbisogno aggiornato con successo dal {start_d} al {end_d}!")
         st.rerun()
 
-# --- 6. GESTIONE ANAGRAFICA (ORIGINALE RIPRISTINATA AL 100%) ---
+# --- 6. GESTIONE ANAGRAFICA ---
 elif menu == "👥 Gestione Anagrafica":
     st.title("Anagrafica")
     
